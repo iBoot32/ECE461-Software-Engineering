@@ -1,5 +1,1 @@
-Hello Hello
-
-Hammer up Boiler Down!
-
-Hello my name is Rushil Shah
+Rushil Shah and github name RushilShaw
