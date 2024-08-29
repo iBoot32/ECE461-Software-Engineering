@@ -2,7 +2,6 @@
 
 # change this to run from any directory
 cd "$(dirname "$0")"
-cd ..
 
 case $1 in
   build)
@@ -11,9 +10,6 @@ case $1 in
     ;;
   install)
     npm install
-    ;;
-  URL_FILE)
-    ./dist/cli.js $2
     ;;
   test)
     npm run test
@@ -32,7 +28,6 @@ case $1 in
     echo "  help: Show this help"
     ;;
   *)
-    echo "Invalid command"
-    exit 1
+    ./dist/cli.js $1
     ;;
 esac
