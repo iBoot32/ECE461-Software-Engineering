@@ -44,6 +44,125 @@ function main() {
     }
 }
 
+abstract class Metrics {
+    // Add a variable to the class
+    public responseTime: number;
+
+    constructor(
+        public url: string,
+    ) {
+        //  call the evaluate method
+        this.url = url;
+        this.responseTime = 0;
+    }
+
+    abstract evaluate(): number;
+}
+
+class BusFactor extends Metrics {
+    // Add a variable to the class
+    constructor(
+        url: string,
+        public busFactor: number
+    ) {
+        super(url);
+        this.busFactor = this.evaluate();
+
+    }
+
+    evaluate(): number {
+        // Implement the evaluate method
+        return -1;
+    }
+}
+
+class Correctness extends Metrics {
+    // Add a variable to the class
+    constructor(
+        url: string,
+        public correctness: number
+    ) {
+        super(url);
+        this.correctness = this.evaluate();
+    }
+
+    evaluate(): number {
+        // Implement the evaluate method
+        return -1;
+    }
+}
+
+class Maintainability extends Metrics {
+    // Add a variable to the class
+    constructor(
+        url: string,
+        public maintainability: number
+    ) {
+        super(url);
+        this.maintainability = this.evaluate();
+    }
+
+    evaluate(): number {
+        // Implement the evaluate method
+        return -1;
+    }
+}
+
+class RampUp extends Metrics {
+    // Add a variable to the class
+    constructor(
+        url: string,
+        public rampUpTime: number
+    ) {
+        super(url);
+        this.rampUpTime = this.evaluate();
+    }
+
+    evaluate(): number {
+        // Implement the evaluate method
+        return -1;
+    }
+}
+
+class License extends Metrics {
+    // Add a variable to the class
+    constructor(
+        url: string,
+        public license: number
+    ) {
+        super(url);
+        this.license = this.evaluate();
+    }
+
+    evaluate(): number {
+        // Implement the evaluate method
+        return -1;
+    }
+}
+
+class NetScore extends Metrics {
+    // Add a variable to the class
+    weights: Array<number> = [19.84, 7.47, 30.69, 42.0];
+    public netScore: number
+    constructor(
+        url: string,
+    ) {
+        super(url);
+        this.netScore = this.evaluate();
+    }
+
+    evaluate(): number {
+        // Implement the evaluate method
+        return -1;
+    }
+
+    toString(): string {
+        // Implement the toString method
+        return '';
+    }
+
+}
+
 // Placeholder function for 'install'
 function installDependencies() {
     console.log('Installing dependencies...');
