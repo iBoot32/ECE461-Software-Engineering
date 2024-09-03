@@ -18,8 +18,6 @@ if (!githubToken) {
 }
 let OCTOKIT: Octokit = new Octokit({ auth: githubToken, });
 
-
-
 // Helper function to display usage information
 function showUsage() {
     console.log(`Usage:
@@ -33,6 +31,19 @@ async function getRateLimitStatus() {
     return rateLimit.data.rate;
 }
 
+function ASSERT_EQ(actual: number, expected: number, testName: string = ''): number {
+    let threshold = 0.01;
+
+    if (Math.abs(expected - actual) < threshold) {
+        console.log(`\x1b[32m${testName}: Passed\x1b[0m`);
+        return 1;
+    }
+    else {//📝
+        console.error(`${testName}: Failed`);
+        console.error(`Expected: ${expected}, Actual: ${actual}`);
+        return 0;
+    }
+}
 
 // Define the Metrics class
 abstract class Metrics {
@@ -48,6 +59,7 @@ abstract class Metrics {
 
     abstract evaluate(): Promise<number>;
 }
+
 class BusFactor extends Metrics {
     private octokit: Octokit;
     public busFactor: number = 0;
@@ -73,11 +85,6 @@ class BusFactor extends Metrics {
         this.busFactor = this.calculateBusFactor(commitData);
 
         return this.busFactor;
-    }
-
-    private async getRateLimitStatus() {
-        const rateLimit = await this.octokit.rateLimit.get();
-        return rateLimit.data.rate;
     }
 
     private async getRepoData(url: string): Promise<{ owner: string; repo: string }> {
@@ -112,7 +119,7 @@ class BusFactor extends Metrics {
             page++;
         }
 
-        //print total number of commits 📝
+        // print total number of commits 📝
         // console.log("Total number of commits:", Array.from(commitCounts.values()).reduce((a, b) => a + b, 0));
         // console.log("Commit data:", commitCounts);
 
@@ -137,20 +144,83 @@ class BusFactor extends Metrics {
     }
 }
 
-
 class Correctness extends Metrics {
-    // Add a variable to the class
-    public correctness: Promise<number>;
-    constructor(
-        url: string,
-    ) {
+    public correctness: number = 0;
+
+    constructor(url: string) {
         super(url);
-        this.correctness = this.evaluate();
     }
 
     async evaluate(): Promise<number> {
-        // Implement the evaluate method
-        return -1;
+        const rateLimitStatus = await getRateLimitStatus();
+
+        if (rateLimitStatus.remaining === 0) {
+            const resetTime = new Date(rateLimitStatus.reset * 1000).toLocaleTimeString();
+            console.log(`Rate limit exceeded. Try again after ${resetTime}`);
+            return -1;
+        }
+
+        this.correctness = await this.calculateCorrectness();
+        return this.correctness;
+    }
+
+    private async calculateCorrectness(): Promise<number> {
+        try {
+            // Fetch the issues data from the repository
+            const { openBugIssues, totalOpenIssues } = await this.fetchIssuesData();
+
+            // Check if total issues count is zero to prevent division by zero
+            if (totalOpenIssues === 0) {
+                console.log('No issues reported.');
+                return 1; // Assuming correctness is perfect if there are no issues
+            }
+
+            // Calculate correctness
+            const correctness = 1 - (openBugIssues / totalOpenIssues);
+            return correctness;
+        } catch (error) {
+            console.error('Error calculating correctness:', error);
+            return -1;
+        }
+    }
+
+    private async fetchIssuesData(): Promise<{ openBugIssues: number; totalOpenIssues: number }> {
+        try {
+            // Extract the owner and repo from the URL
+            const repoInfo = this.extractRepoInfo();
+            if (!repoInfo) {
+                throw new Error('Invalid repository URL');
+            }
+
+            const { owner, repo } = repoInfo;
+            const { data } = await OCTOKIT.issues.listForRepo({
+                owner,
+                repo,
+                state: 'all',
+                labels: 'bug', // Filter by bug label
+                per_page: 100
+            });
+
+            // Count open and total issues
+            const openBugIssues = data.filter(issue => issue.state === 'open').length;
+            const totalOpenIssues = data.length;
+            
+            return { openBugIssues, totalOpenIssues };
+        } catch (error) {
+            console.error('Error fetching issues data:', error);
+            throw error;
+        }
+    }
+
+    private extractRepoInfo(): { owner: string; repo: string } | null {
+        // Regex to parse GitHub URL and extract owner and repository name
+        const regex = /https:\/\/github\.com\/([^\/]+)\/([^\/]+)/;
+        const match = this.url.match(regex);
+
+        if (match && match.length >= 3) {
+            return { owner: match[1], repo: match[2] };
+        }
+        return null;
     }
 }
 
@@ -228,7 +298,6 @@ class NetScore extends Metrics {
         // Implement the toString method
         return 'NetScore: ${this.netScore}';
     }
-
 }
 
 async function BusFactorTest(): Promise<{ passed: number, failed: number }> {
@@ -262,7 +331,23 @@ async function BusFactorTest(): Promise<{ passed: number, failed: number }> {
     return { passed: testsPassed, failed: testsFailed };
 }
 
-// Placeholder function for 'test'
+async function CorrectnessTest(): Promise<{ passed: number, failed: number }> {
+    let testsPassed = 0;
+    let testsFailed = 0;
+
+    const correctness = new Correctness('https://github.com/cloudinary/cloudinary_npm');
+    const result: number = await correctness.evaluate();
+    const expectedValue = 0.933333333; // Expected value is 0.93333...
+    ASSERT_EQ(result, expectedValue, 'Correctness test 1') ? testsPassed++ : testsFailed++;
+
+    const correctness2 = new Correctness('https://github.com/nullivex/nodist');
+    const result2: number = await correctness2.evaluate();
+    const expectedValue2 = 0.90909091; // Expected value is 0.90909091
+    ASSERT_EQ(result2, expectedValue2, 'Correctness test 2') ? testsPassed++ : testsFailed++;
+
+    return { passed: testsPassed, failed: testsFailed };
+}
+
 async function runTests() {
     let passedTests = 0;
     let failedTests = 0;
@@ -276,6 +361,7 @@ async function runTests() {
 
     //Run tests
     results.push(BusFactorTest());
+    results.push(CorrectnessTest());
 
     // Display test results
     for (let i = 0; i < results.length; i++) {
@@ -319,7 +405,5 @@ function main() {
         .help()
         .alias('help', 'h')
         .argv;
-
 }
-
 main();
