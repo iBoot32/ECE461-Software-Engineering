@@ -47,8 +47,8 @@ function ASSERT_EQ(actual: number, expected: number, testName: string = ''): num
 
 // Define the Metrics class
 abstract class Metrics {
-    // Add a variable to the class
     public responseTime: number;
+    public octokit: Octokit = OCTOKIT;
 
     constructor(
         public url: string,
@@ -61,7 +61,6 @@ abstract class Metrics {
 }
 
 class BusFactor extends Metrics {
-    private octokit: Octokit;
     public busFactor: number = 0;
 
     constructor(url: string, token: string = githubToken as string) {
@@ -193,7 +192,7 @@ class Correctness extends Metrics {
             }
 
             const { owner, repo } = repoInfo;
-            const { data } = await OCTOKIT.issues.listForRepo({
+            const { data } = await this.octokit.issues.listForRepo({
                 owner,
                 repo,
                 state: 'all',
@@ -303,30 +302,29 @@ class NetScore extends Metrics {
 async function BusFactorTest(): Promise<{ passed: number, failed: number }> {
     let testsPassed = 0;
     let testsFailed = 0;
-    const busFactor = new BusFactor('https://github.com/cloudinary/cloudinary_npm');
-    const result: number = await busFactor.evaluate();
+    let busFactors: BusFactor[] = [];
 
-    if (result - .14545454545454545 < 0.0001) {
-        console.log('Bus factor test passed');
-        testsPassed++;
-    } else {
-        console.error('Bus factor test failed');
-        console.log(`Bus factor: ${result}`);
-        testsFailed++;
-    }
+    //first test
+    let busFactor = new BusFactor('https://github.com/cloudinary/cloudinary_npm');
+    let result = await busFactor.evaluate();
+    ASSERT_EQ(result, 0.3, "Bus Factor Test 1") ? testsPassed++ : testsFailed++;
+    ASSERT_EQ(busFactor.responseTime, 0.004, "Bus Factor Response Time Test 1") ? testsPassed++ : testsFailed++;
+    busFactors.push(busFactor);
 
-    const busFactor2 = new BusFactor('https://github.com/nullivex/nodist');
-    const result2: number = await busFactor2.evaluate();
 
-    if (result2 - .25 < 0.0001) {
-        console.log('Bus factor test passed');
-        testsPassed++;
-    }
-    else {
-        console.error('Bus factor test failed');
-        console.log(`Bus factor2: ${result2}`);
-        testsFailed++;
-    }
+    //second test
+    busFactor = new BusFactor('https://github.com/nullivex/nodist');
+    result = await busFactor.evaluate();
+    ASSERT_EQ(result, 0.3, "Bus Factor Test 2") ? testsPassed++ : testsFailed++;
+    ASSERT_EQ(busFactor.responseTime, 0.002, "Bus Factor Response Time Test 2") ? testsPassed++ : testsFailed++;
+    busFactors.push(busFactor);
+
+    //third test
+    busFactor = new BusFactor('https://github.com/lodash/lodash');
+    result = await busFactor.evaluate();
+    ASSERT_EQ(result, 0.7, "Bus Factor Test 3") ? testsPassed++ : testsFailed++;
+    ASSERT_EQ(busFactor.responseTime, 0.084, "Bus Factor Response Time Test 3") ? testsPassed++ : testsFailed++;
+    busFactors.push(busFactor);
 
     return { passed: testsPassed, failed: testsFailed };
 }
@@ -359,7 +357,7 @@ async function runTests() {
     let status = await getRateLimitStatus();
     console.log(`Rate limit status: ${status.remaining} out of ${status.limit}`);
 
-    //Run tests
+    // Run tests
     results.push(BusFactorTest());
     results.push(CorrectnessTest());
 
