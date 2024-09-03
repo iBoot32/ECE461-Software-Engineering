@@ -28,9 +28,18 @@ function showUsage() {
     ./run test                      # Run test suite`);
 }
 
-async function getRateLimitStatus() {
-    const rateLimit = await OCTOKIT.rateLimit.get();
-    return rateLimit.data.rate;
+function ASSERT_EQ(actual: number, expected: number, testName: string = ''): number {
+    let threshold = 0.01;
+
+    if (Math.abs(expected - actual) < threshold) {
+        console.log(`\x1b[32m${testName}: Passed\x1b[0m`);
+        return 1;
+    }
+    else {//📝
+        console.error(`${testName}: Failed`);
+        console.error(`Expected: ${expected}, Actual: ${actual}`);
+        return 0;
+    }
 }
 
 
@@ -38,6 +47,7 @@ async function getRateLimitStatus() {
 abstract class Metrics {
     // Add a variable to the class
     public responseTime: number;
+    public octokit: Octokit = OCTOKIT;
 
     constructor(
         public url: string,
@@ -47,20 +57,22 @@ abstract class Metrics {
     }
 
     abstract evaluate(): Promise<number>;
+
+    public async getRateLimitStatus() {
+        const rateLimit = await OCTOKIT.rateLimit.get();
+        return rateLimit.data.rate;
+    }
 }
+
 class BusFactor extends Metrics {
-    private octokit: Octokit;
     public busFactor: number = 0;
 
-    constructor(url: string, token: string = githubToken as string) {
+    constructor(url: string) {
         super(url);
-        this.octokit = new Octokit({
-            auth: token, // Optional: Use a token for higher rate limits
-        });
     }
 
     async evaluate(): Promise<number> {
-        const rateLimitStatus = await getRateLimitStatus();
+        const rateLimitStatus = await this.getRateLimitStatus();
 
         if (rateLimitStatus.remaining === 0) {
             const resetTime = new Date(rateLimitStatus.reset * 1000).toLocaleTimeString();
@@ -68,17 +80,17 @@ class BusFactor extends Metrics {
             return -1;
         }
 
+        const startTime = performance.now();
         const { owner, repo } = await this.getRepoData(this.url);
         const commitData = await this.getCommitData(owner, repo);
         this.busFactor = this.calculateBusFactor(commitData);
+        const endTime = performance.now();
+        const elapsedTime = Number(endTime - startTime) / 1e6; // Convert to milliseconds
+        this.responseTime = elapsedTime;
 
         return this.busFactor;
     }
 
-    private async getRateLimitStatus() {
-        const rateLimit = await this.octokit.rateLimit.get();
-        return rateLimit.data.rate;
-    }
 
     private async getRepoData(url: string): Promise<{ owner: string; repo: string }> {
         const regex = /https:\/\/github\.com\/([^/]+)\/([^/]+)/;
@@ -91,16 +103,13 @@ class BusFactor extends Metrics {
     private async getCommitData(owner: string, repo: string): Promise<Map<string, number>> {
         const commitCounts = new Map<string, number>();
         let page = 1;
-
-        while (true) {
+        while (true && page < 10) {
             const { data: commits } = await this.octokit.repos.listCommits({
                 owner,
                 repo,
-                per_page: 1000,
+                per_page: 100,
                 page,
             });
-
-            if (commits.length === 0) break;
 
             commits.forEach((commit) => {
                 const author = commit.author?.login;
@@ -109,8 +118,14 @@ class BusFactor extends Metrics {
                 }
             });
 
+            if (commits.length < 100) {
+                break;
+            }
             page++;
         }
+
+
+
 
         //print total number of commits 📝
         // console.log("Total number of commits:", Array.from(commitCounts.values()).reduce((a, b) => a + b, 0));
@@ -133,7 +148,7 @@ class BusFactor extends Metrics {
         const rawBusFactor = i / sortedContributors.length;
         const adjustedBusFactor = rawBusFactor * 2;
 
-        return adjustedBusFactor;
+        return Math.min(adjustedBusFactor);
     }
 }
 
@@ -234,30 +249,29 @@ class NetScore extends Metrics {
 async function BusFactorTest(): Promise<{ passed: number, failed: number }> {
     let testsPassed = 0;
     let testsFailed = 0;
-    const busFactor = new BusFactor('https://github.com/cloudinary/cloudinary_npm');
-    const result: number = await busFactor.evaluate();
+    let busFactors: BusFactor[] = [];
 
-    if (result - .14545454545454545 < 0.0001) {
-        console.log('Bus factor test passed');
-        testsPassed++;
-    } else {
-        console.error('Bus factor test failed');
-        console.log(`Bus factor: ${result}`);
-        testsFailed++;
-    }
+    //first test
+    let busFactor = new BusFactor('https://github.com/cloudinary/cloudinary_npm');
+    let result = await busFactor.evaluate();
+    ASSERT_EQ(result, 0.3, "Bus Factor Test 1") ? testsPassed++ : testsFailed++;
+    ASSERT_EQ(busFactor.responseTime, 0.004, "Bus Factor Response Time Test 1") ? testsPassed++ : testsFailed++;
+    busFactors.push(busFactor);
 
-    const busFactor2 = new BusFactor('https://github.com/nullivex/nodist');
-    const result2: number = await busFactor2.evaluate();
 
-    if (result2 - .25 < 0.0001) {
-        console.log('Bus factor test passed');
-        testsPassed++;
-    }
-    else {
-        console.error('Bus factor test failed');
-        console.log(`Bus factor2: ${result2}`);
-        testsFailed++;
-    }
+    //second test
+    busFactor = new BusFactor('https://github.com/nullivex/nodist');
+    result = await busFactor.evaluate();
+    ASSERT_EQ(result, 0.3, "Bus Factor Test 2") ? testsPassed++ : testsFailed++;
+    ASSERT_EQ(busFactor.responseTime, 0.002, "Bus Factor Response Time Test 2") ? testsPassed++ : testsFailed++;
+    busFactors.push(busFactor);
+
+    //third test
+    busFactor = new BusFactor('https://github.com/lodash/lodash');
+    result = await busFactor.evaluate();
+    ASSERT_EQ(result, 0.7, "Bus Factor Test 3") ? testsPassed++ : testsFailed++;
+    ASSERT_EQ(busFactor.responseTime, 0.084, "Bus Factor Response Time Test 3") ? testsPassed++ : testsFailed++;
+    busFactors.push(busFactor);
 
     return { passed: testsPassed, failed: testsFailed };
 }
@@ -271,8 +285,8 @@ async function runTests() {
     console.log('Checking environment variables...');
 
     // get token from environment variable
-    let status = await getRateLimitStatus();
-    console.log(`Rate limit status: ${status.remaining} out of ${status.limit}`);
+    let status = await OCTOKIT.rateLimit.get();
+    console.log(`Rate limit status: ${status.data.rate.remaining} remaining out of ${status.data.rate.limit}`);
 
     //Run tests
     results.push(BusFactorTest());
