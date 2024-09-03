@@ -1,0 +1,15 @@
+#!/bin/bash
+
+# change this to run from any directory
+cd "$(dirname "$0")"
+echo "Running from $(pwd)"
+
+# clear the build directory
+# rm -rf build
+# mkdir build
+
+#build the project
+npx tsc
+
+#run the project
+./dist/cli.js $@
