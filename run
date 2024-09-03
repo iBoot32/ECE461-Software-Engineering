@@ -11,5 +11,16 @@ echo "Running from $(pwd)"
 #build the project
 npx tsc
 
-#run the project
-./dist/cli.js $@
+case $1 in
+  build)
+    npx tsc
+    chmod +x dist/cli.js 
+    ;;
+  install)
+    npm install
+    ;;
+    *)
+    ./dist/cli.js $@
+    ;;
+esac
+
