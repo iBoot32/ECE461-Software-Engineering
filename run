@@ -2,6 +2,14 @@
 
 # change this to run from any directory
 cd "$(dirname "$0")"
+echo "Running from $(pwd)"
+
+# clear the build directory
+# rm -rf build
+# mkdir build
+
+#build the project
+npx tsc
 
 case $1 in
   build)
@@ -11,23 +19,8 @@ case $1 in
   install)
     npm install
     ;;
-  test)
-    npm run test
-    ;;
-  chelp)
-    ./dist/cli.js --help
-    ;;
-  help)
-    echo "Usage: ./run.sh [command]"
-    echo "Commands:"
-    echo "  build: Build the project"
-    echo "  install: Install dependencies"
-    echo "  URL_FILE: Run the project with the URL file"
-    echo "  test: Run the tests"
-    echo "  chelp: show the CLI help"
-    echo "  help: Show this help"
-    ;;
-  *)
-    ./dist/cli.js $1
+    *)
+    ./dist/cli.js $@
     ;;
 esac
+

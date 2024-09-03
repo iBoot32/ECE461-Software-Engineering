@@ -8,6 +8,7 @@ import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import { Octokit } from '@octokit/rest';
 import dotenv from 'dotenv';
+import test from 'node:test';
 
 dotenv.config();
 // Access the token value
@@ -15,19 +16,20 @@ const githubToken = process.env.GITHUB_TOKEN;
 if (!githubToken) {
     throw new Error('GITHUB_TOKEN is not defined in the .env file');
 }
+let OCTOKIT: Octokit = new Octokit({ auth: githubToken, });
 
 
 
 // Helper function to display usage information
 function showUsage() {
     console.log(`Usage:
-    ./cli.js install                   # Install dependencies
-    ./cli.js <path/to/file>            # Process URLs from "URL_FILE"
-    ./cli.js test                      # Run test suite`);
+    ./run install                   # Install dependencies
+    ./run <path/to/file>            # Process URLs from "URL_FILE"
+    ./run test                      # Run test suite`);
 }
 
-async function getRateLimitStatus(token: string): Promise<{ remaining: number; limit: number }> {
-    const rateLimit = await new Octokit({ auth: token }).rateLimit.get();
+async function getRateLimitStatus() {
+    const rateLimit = await OCTOKIT.rateLimit.get();
     return rateLimit.data.rate;
 }
 
@@ -58,7 +60,7 @@ class BusFactor extends Metrics {
     }
 
     async evaluate(): Promise<number> {
-        const rateLimitStatus = await this.getRateLimitStatus();
+        const rateLimitStatus = await getRateLimitStatus();
 
         if (rateLimitStatus.remaining === 0) {
             const resetTime = new Date(rateLimitStatus.reset * 1000).toLocaleTimeString();
@@ -94,7 +96,7 @@ class BusFactor extends Metrics {
             const { data: commits } = await this.octokit.repos.listCommits({
                 owner,
                 repo,
-                per_page: 100,
+                per_page: 1000,
                 page,
             });
 
@@ -109,6 +111,10 @@ class BusFactor extends Metrics {
 
             page++;
         }
+
+        //print total number of commits 📝
+        // console.log("Total number of commits:", Array.from(commitCounts.values()).reduce((a, b) => a + b, 0));
+        // console.log("Commit data:", commitCounts);
 
         return commitCounts;
     }
@@ -225,31 +231,62 @@ class NetScore extends Metrics {
 
 }
 
-// Placeholder function for 'install'
-function installDependencies() {
-    console.log('Installing dependencies...');
-    execSync('npm install', { stdio: 'inherit' });
-}
-
-async function BusFactorTest() {
+async function BusFactorTest(): Promise<{ passed: number, failed: number }> {
+    let testsPassed = 0;
+    let testsFailed = 0;
     const busFactor = new BusFactor('https://github.com/cloudinary/cloudinary_npm');
     const result: number = await busFactor.evaluate();
-    console.log(`Bus factor: ${result}`);
+
+    if (result - .14545454545454545 < 0.0001) {
+        console.log('Bus factor test passed');
+        testsPassed++;
+    } else {
+        console.error('Bus factor test failed');
+        console.log(`Bus factor: ${result}`);
+        testsFailed++;
+    }
+
+    const busFactor2 = new BusFactor('https://github.com/nullivex/nodist');
+    const result2: number = await busFactor2.evaluate();
+
+    if (result2 - .25 < 0.0001) {
+        console.log('Bus factor test passed');
+        testsPassed++;
+    }
+    else {
+        console.error('Bus factor test failed');
+        console.log(`Bus factor2: ${result2}`);
+        testsFailed++;
+    }
+
+    return { passed: testsPassed, failed: testsFailed };
 }
 
 // Placeholder function for 'test'
 async function runTests() {
+    let passedTests = 0;
+    let failedTests = 0;
+    let results: Promise<{ passed: number, failed: number }>[] = [];
     console.log('Running tests...');
     console.log('Checking environment variables...');
 
     // get token from environment variable
-    console.log(`Token: ${githubToken}`);
-
-    let status = await getRateLimitStatus(env.GITHUB_TOKEN || '');
+    let status = await getRateLimitStatus();
     console.log(`Rate limit status: ${status.remaining} out of ${status.limit}`);
 
     //Run tests
-    await BusFactorTest();
+    results.push(BusFactorTest());
+
+    // Display test results
+    for (let i = 0; i < results.length; i++) {
+        let result = await results[i];
+        passedTests += result.passed;
+        failedTests += result.failed;
+    }
+
+    console.log(`\x1b[1;32mTests Passed: ${passedTests}\x1b[0m`);
+    console.log(`\x1b[1;31mTests Failed: ${failedTests}\x1b[0m`);
+    console.log('\x1b[1;34mTests complete\x1b[0m');
 }
 
 // Placeholder function for processing URLs
@@ -261,9 +298,6 @@ function processUrls(urlFile: string) {
 // Main function to handle commands
 function main() {
     const argv = yargs(hideBin(process.argv))
-        .command('install', 'Install dependencies', {}, () => {
-            installDependencies();
-        })
         .command('test', 'Run test suite', {}, () => {
             runTests();
         })
