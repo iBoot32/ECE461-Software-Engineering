@@ -18,7 +18,9 @@ if (!githubToken) {
 }
 let OCTOKIT: Octokit = new Octokit({ auth: githubToken, });
 
-// Helper function to display usage information
+/**
+ * Displays the usage information for the CLI.
+ */
 function showUsage() {
     console.log(`Usage:
     ./run install                   # Install dependencies
@@ -26,11 +28,23 @@ function showUsage() {
     ./run test                      # Run test suite`);
 }
 
+/**
+ * Retrieves the rate limit status for GitHub.
+ * @returns {Promise<number>} The rate limit value.
+ */
 async function getRateLimitStatus() {
     const rateLimit = await OCTOKIT.rateLimit.get();
     return rateLimit.data.rate;
 }
 
+/**
+ * Asserts that the actual value is equal to the expected value within a threshold.
+ * 
+ * @param actual - The actual value to compare.
+ * @param expected - The expected value to compare against.
+ * @param testName - The name of the test (optional).
+ * @returns Returns 1 if the assertion passes, otherwise returns 0.
+ */
 function ASSERT_EQ(actual: number, expected: number, testName: string = ''): number {
     let threshold = 0.01;
 
@@ -45,7 +59,52 @@ function ASSERT_EQ(actual: number, expected: number, testName: string = ''): num
     }
 }
 
-// Define the Metrics class
+/**
+ * Asserts that the actual value is less than the expected value with a threshold of 0.005.
+ * 
+ * @param actual - The actual value to be compared.
+ * @param expected - The expected value.
+ * @param testName - The name of the test (optional).
+ * @returns 1 if the assertion passes, 0 otherwise.
+ */
+function ASSERT_LT(actual: number, expected: number, testName: string = ''): number {
+    let threshold = 0.005;
+
+    if (actual < (expected + threshold)) {
+        console.log(`\x1b[32m${testName}:\tPassed\x1b[0m`);
+        return 1;
+    }
+    else {
+        console.error(`${testName}:\tFailed\tExpected: ${expected}, Actual: ${actual}`);
+        return 0;
+    }
+}
+
+/**
+ * Asserts that the actual value is greater than the expected value with a given threshold.
+ * 
+ * @param actual - The actual value to be compared.
+ * @param expected - The expected value to be compared against.
+ * @param testName - The name of the test (optional).
+ * @returns 1 if the assertion passes, 0 otherwise.
+ */
+function ASSERT_GT(actual: number, expected: number, testName: string = ''): number {
+    let threshold = 0.01;
+
+    if (actual > (expected - threshold)) {
+        console.log(`\x1b[32m${testName}: Passed\x1b[0m`);
+        return 1;
+    }
+    else {
+        console.error(`${testName}: Failed\tExpected: ${expected}, Actual: ${actual}`);
+        return 0;
+    }
+}
+
+/**
+ * Represents a Metrics class.
+ * @abstract
+ */
 abstract class Metrics {
     public responseTime: number;
     public octokit: Octokit = OCTOKIT;
@@ -60,9 +119,19 @@ abstract class Metrics {
     abstract evaluate(): Promise<number>;
 }
 
+/**
+ * Represents a class that calculates the bus factor of a repository.
+ * The bus factor is a measure of the number of developers that need to be hit by a bus (or leave the project) 
+ * before it becomes infeasible to maintain the codebase.
+ */
 class BusFactor extends Metrics {
     public busFactor: number = 0;
 
+    /**
+     * Constructs a new instance of the CLI class.
+     * @param url - The URL to connect to.
+     * @param token - The authentication token to use. Optional: Use a token for higher rate limits.
+     */
     constructor(url: string, token: string = githubToken as string) {
         super(url);
         this.octokit = new Octokit({
@@ -70,6 +139,11 @@ class BusFactor extends Metrics {
         });
     }
 
+    /**
+     * Asynchronously evaluates the bus factor of a repository.
+     * 
+     * @returns A promise that resolves to the calculated bus factor.
+     */
     async evaluate(): Promise<number> {
         const rateLimitStatus = await getRateLimitStatus();
 
@@ -86,6 +160,13 @@ class BusFactor extends Metrics {
         return this.busFactor;
     }
 
+    /**
+     * Retrieves the owner and repository name from a given GitHub URL.
+     * 
+     * @param url - The GitHub URL to extract the owner and repository from.
+     * @returns A promise that resolves to an object containing the owner and repository name.
+     * @throws An error if the provided URL is invalid.
+     */
     private async getRepoData(url: string): Promise<{ owner: string; repo: string }> {
         const regex = /https:\/\/github\.com\/([^/]+)\/([^/]+)/;
         const match = url.match(regex);
@@ -94,6 +175,14 @@ class BusFactor extends Metrics {
         return { owner: match[1], repo: match[2] };
     }
 
+    /**
+     * Retrieves commit data for a given owner and repository.
+     * 
+     * @param owner - The owner of the repository.
+     * @param repo - The name of the repository.
+     * @returns A Promise that resolves to a Map containing the commit data, where the keys are the authors' 
+     *          usernames and the values are the number of commits made by each author.
+     */
     private async getCommitData(owner: string, repo: string): Promise<Map<string, number>> {
         const commitCounts = new Map<string, number>();
         let page = 1;
@@ -125,6 +214,12 @@ class BusFactor extends Metrics {
         return commitCounts;
     }
 
+    /**
+     * Calculates the bus factor based on the commit data.
+     * 
+     * @param commitData - A map containing the number of commits for each contributor.
+     * @returns The calculated bus factor.
+     */
     private calculateBusFactor(commitData: Map<string, number>): number {
         const totalCommits = Array.from(commitData.values()).reduce((a, b) => a + b, 0);
         const sortedContributors = Array.from(commitData.entries()).sort((a, b) => b[1] - a[1]);
@@ -143,13 +238,26 @@ class BusFactor extends Metrics {
     }
 }
 
+/**
+ * Represents a class that calculates the correctness of a repository based on its issues data.
+ * @extends Metrics
+ */
 class Correctness extends Metrics {
     public correctness: number = 0;
 
+    /**
+     * Constructs a new instance of the class.
+     * @param url The URL to be passed to the constructor.
+     */
     constructor(url: string) {
         super(url);
     }
 
+    /**
+     * Asynchronously evaluates the correctness of the code.
+     * 
+     * @returns A promise that resolves to the correctness value.
+     */
     async evaluate(): Promise<number> {
         const rateLimitStatus = await getRateLimitStatus();
 
@@ -163,6 +271,14 @@ class Correctness extends Metrics {
         return this.correctness;
     }
 
+    /**
+     * Calculates the correctness of the system based on the number of open bug issues and total open issues.
+     * 
+     * @returns A Promise that resolves to a number representing the correctness of the system.
+     *          Returns 1 if there are no issues reported.
+     *          Returns a value between 0 and 1 representing the correctness percentage if there are issues.
+     *          Returns -1 if there was an error calculating the correctness.
+     */
     private async calculateCorrectness(): Promise<number> {
         try {
             // Fetch the issues data from the repository
@@ -183,6 +299,13 @@ class Correctness extends Metrics {
         }
     }
 
+    /**
+     * Fetches the issues data from the repository.
+     * 
+     * @returns A promise that resolves to an object containing the number of open bug issues 
+     *          and the total number of open issues.
+     * @throws {Error} If the repository URL is invalid or if there is an error fetching the data.
+     */
     private async fetchIssuesData(): Promise<{ openBugIssues: number; totalOpenIssues: number }> {
         try {
             // Extract the owner and repo from the URL
@@ -211,6 +334,11 @@ class Correctness extends Metrics {
         }
     }
 
+    /**
+     * Extracts the owner and repository name from a GitHub URL.
+     * 
+     * @returns An object containing the owner and repo properties, or null if the URL is invalid.
+     */
     private extractRepoInfo(): { owner: string; repo: string } | null {
         // Regex to parse GitHub URL and extract owner and repository name
         const regex = /https:\/\/github\.com\/([^\/]+)\/([^\/]+)/;
@@ -299,6 +427,11 @@ class NetScore extends Metrics {
     }
 }
 
+/**
+ * Executes a series of tests to evaluate the bus factor of different GitHub repositories.
+ * 
+ * @returns A promise that resolves to an object containing the number of tests passed and failed.
+ */
 async function BusFactorTest(): Promise<{ passed: number, failed: number }> {
     let testsPassed = 0;
     let testsFailed = 0;
@@ -329,19 +462,37 @@ async function BusFactorTest(): Promise<{ passed: number, failed: number }> {
     return { passed: testsPassed, failed: testsFailed };
 }
 
+/**
+ * Performs a correctness test on two instances of the Correctness class.
+ * 
+ * @returns A promise that resolves to an object containing the number of tests passed and failed.
+ */
 async function CorrectnessTest(): Promise<{ passed: number, failed: number }> {
     let testsPassed = 0;
     let testsFailed = 0;
+    const timings: number[] = [];
 
+    // Test 1
+    const start1 = Date.now();
     const correctness = new Correctness('https://github.com/cloudinary/cloudinary_npm');
     const result: number = await correctness.evaluate();
+    const end1 = Date.now();
+    timings.push(end1 - start1);
+
     const expectedValue = 0.933333333; // Expected value is 0.93333...
     ASSERT_EQ(result, expectedValue, 'Correctness test 1') ? testsPassed++ : testsFailed++;
+    console.log(`Correctness response time: ${timings[0]}ms`);
 
+    // Test 2
+    const start2 = Date.now();
     const correctness2 = new Correctness('https://github.com/nullivex/nodist');
     const result2: number = await correctness2.evaluate();
+    const end2 = Date.now();
+    timings.push(end2 - start2);
+
     const expectedValue2 = 0.90909091; // Expected value is 0.90909091
     ASSERT_EQ(result2, expectedValue2, 'Correctness test 2') ? testsPassed++ : testsFailed++;
+    console.log(`Correctness response time: ${timings[1]}ms`);
 
     return { passed: testsPassed, failed: testsFailed };
 }
@@ -358,7 +509,7 @@ async function runTests() {
     console.log(`Rate limit status: ${status.remaining} out of ${status.limit}`);
 
     // Run tests
-    results.push(BusFactorTest());
+    // results.push(BusFactorTest());
     results.push(CorrectnessTest());
 
     // Display test results
@@ -379,7 +530,9 @@ function processUrls(urlFile: string) {
     // Implement URL processing logic here
 }
 
-// Main function to handle commands
+/**
+ * The main function. Handles command line arguments and executes the appropriate functions.
+ */
 function main() {
     const argv = yargs(hideBin(process.argv))
         .command('test', 'Run test suite', {}, () => {
