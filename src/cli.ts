@@ -448,11 +448,6 @@ class NetScore extends Metrics {
     }
 }
 
-/**
- * Executes a series of tests to evaluate the bus factor of different GitHub repositories.
- * 
- * @returns A promise that resolves to an object containing the number of tests passed and failed.
- */
 async function BusFactorTest(): Promise<{ passed: number, failed: number }> {
     let testsPassed = 0;
     let testsFailed = 0;
@@ -483,6 +478,13 @@ async function BusFactorTest(): Promise<{ passed: number, failed: number }> {
     return { passed: testsPassed, failed: testsFailed };
 }
 
+/**
+ * Performs a correctness test on two URLs and returns the number of tests passed, 
+ * number of tests failed, and an array of timings.
+ *
+ * @returns A promise that resolves to an object containing the number of tests passed, 
+ *          number of tests failed, and an array of timings.
+ */
 async function CorrectnessTest(): Promise<{ passed: number; failed: number; timings: number[] }> {
     let testsPassed = 0;
     let testsFailed = 0;
