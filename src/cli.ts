@@ -508,6 +508,15 @@ async function CorrectnessTest(): Promise<{ passed: number; failed: number; timi
     const expectedValue2 = 0.90909091;
     ASSERT_EQ(result2, expectedValue2, 'Correctness test 2') ? testsPassed++ : testsFailed++;
 
+    // Test 3 //
+    const { result: result3, elapsed: elapsed3 } = await timeAsync('Correctness Test 3', async () => {
+        const correctness3 = new Correctness('https://github.com/Coop8/Coop8');
+        return correctness3.evaluate();
+    });
+    timings.push(elapsed3);
+    const expectedValue3 = 1;
+    ASSERT_EQ(result3, expectedValue3, 'Correctness test 3') ? testsPassed++ : testsFailed++;
+
     return { passed: testsPassed, failed: testsFailed, timings };
 }
 
