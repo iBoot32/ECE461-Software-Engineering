@@ -542,6 +542,7 @@ async function BusFactorTest(): Promise<{ passed: number, failed: number }> {
     let result = await busFactor.evaluate();
     ASSERT_EQ(result, 0.3, "Bus Factor Test 1") ? testsPassed++ : testsFailed++;
     ASSERT_LT(busFactor.responseTime, 0.004, "Bus Factor Response Time Test 1") ? testsPassed++ : testsFailed++;
+    console.log(`Response time: ${busFactor.responseTime.toFixed(6)}s\n`);
     busFactors.push(busFactor);
 
 
@@ -550,6 +551,7 @@ async function BusFactorTest(): Promise<{ passed: number, failed: number }> {
     result = await busFactor.evaluate();
     ASSERT_EQ(result, 0.3, "Bus Factor Test 2") ? testsPassed++ : testsFailed++;
     ASSERT_LT(busFactor.responseTime, 0.002, "Bus Factor Response Time Test 2") ? testsPassed++ : testsFailed++;
+    console.log(`Response time: ${busFactor.responseTime.toFixed(6)}s\n`);
     busFactors.push(busFactor);
 
     //third test
@@ -557,6 +559,7 @@ async function BusFactorTest(): Promise<{ passed: number, failed: number }> {
     result = await busFactor.evaluate();
     ASSERT_EQ(result, 0.7, "Bus Factor Test 3") ? testsPassed++ : testsFailed++;
     ASSERT_LT(busFactor.responseTime, 0.084, "Bus Factor Response Time Test 3") ? testsPassed++ : testsFailed++;
+    console.log(`Response time: ${busFactor.responseTime.toFixed(6)}s\n`);
     busFactors.push(busFactor);
 
     return { passed: testsPassed, failed: testsFailed };
@@ -595,7 +598,6 @@ async function CorrectnessTest(): Promise<{ passed: number, failed: number }> {
     return { passed: testsPassed, failed: testsFailed };
 }
 
-
 async function LicenseTest(): Promise<{ passed: number, failed: number }> {
     let testsPassed = 0;
     let testsFailed = 0;
@@ -605,23 +607,26 @@ async function LicenseTest(): Promise<{ passed: number, failed: number }> {
     let license = new License('https://github.com/cloudinary/cloudinary_npm');
     let result = await license.evaluate();
     ASSERT_EQ(result, 1, "License Test 1") ? testsPassed++ : testsFailed++;
+    console.log(`Response time: ${license.responseTime.toFixed(6)}s\n`);
     licenses.push(license);
 
     //second test
     license = new License('https://github.com/nullivex/nodist');
     result = await license.evaluate();
     ASSERT_EQ(result, 1, "License Test 2") ? testsPassed++ : testsFailed++;
+    console.log(`Response time: ${license.responseTime.toFixed(6)}s\n`);
     licenses.push(license);
 
     //third test
     license = new License('https://github.com/lodash/lodash');
     result = await license.evaluate();
     ASSERT_EQ(result, 1, "License Test 3") ? testsPassed++ : testsFailed++;
+    console.log(`Response time: ${license.responseTime.toFixed(6)}s\n`);
     licenses.push(license);
 
     return { passed: testsPassed, failed: testsFailed };
 }
-// Placeholder function for 'test'
+
 async function runTests() {
     let passedTests = 0;
     let failedTests = 0;
