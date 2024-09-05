@@ -4,12 +4,48 @@
 cd "$(dirname "$0")"
 echo "Running from $(pwd)"
 
-# clear the build directory
-# rm -rf build
-# mkdir build
 
-#build the project
-npx tsc
+# Function to install and use the latest version of Node.js
+install_latest_node() {
+  # Detect the platform (Linux/Mac/Windows)
+  unameOut="$(uname -s)"
+  case "${unameOut}" in
+      Linux*)     machine=Linux;;
+      Darwin*)    machine=Mac;;
+      CYGWIN*|MINGW*|MSYS*|MINGW32*) machine=Windows;;
+      *)          machine="UNKNOWN:${unameOut}"
+  esac
+
+  # Install nvm if not already installed
+  if [ ! -d "$HOME/.nvm" ]; then
+    if [ "$machine" = "Linux" ] || [ "$machine" = "Mac" ]; then
+      curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.5/install.sh | bash
+    elif [ "$machine" = "Windows" ]; then
+      echo "Please install nvm manually from https://github.com/coreybutler/nvm-windows/releases"
+      exit 1
+    else
+      echo "Unsupported platform: ${machine}"
+      exit 1
+    fi
+    export NVM_DIR="$HOME/.nvm"
+    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh" # This loads nvm
+  else
+    export NVM_DIR="$HOME/.nvm"
+    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh" # This loads nvm
+  fi
+
+  # Install and use the latest version of Node.js
+  if [ "$machine" = "Windows" ]; then
+    nvm install latest
+    nvm use latest
+  else
+    nvm install node --reinstall-packages-from=node
+    nvm use node
+  fi
+}
+
+
+# Main script execution
 
 case $1 in
   build)
@@ -17,9 +53,16 @@ case $1 in
     chmod +x dist/cli.js 
     ;;
   install)
+    # Run the install_latest_node function to ensure Node.js is up-to-date
+    install_latest_node
     npm install
     ;;
-    *)
+  clean)
+    rm -rf build
+    ;;
+  *)
+    npx tsc
+    chmod +x dist/cli.js
     ./dist/cli.js $@
     ;;
 esac
