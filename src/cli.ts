@@ -251,7 +251,7 @@ class BusFactor extends Metrics {
  * @extends Metrics
  */
 class Correctness extends Metrics {
-    public correctness: number = 0;
+    public correctness: number = -1;
 
     /**
      * Constructs a new instance of the class.
