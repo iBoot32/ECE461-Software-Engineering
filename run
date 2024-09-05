@@ -44,15 +44,16 @@ install_latest_node() {
   fi
 }
 
-# Run the install_latest_node function to ensure Node.js is up-to-date
 
 # Main script execution
+
 case $1 in
   build)
     npx tsc
     chmod +x dist/cli.js 
     ;;
   install)
+    # Run the install_latest_node function to ensure Node.js is up-to-date
     install_latest_node
     npm install
     ;;
@@ -65,5 +66,4 @@ case $1 in
     ./dist/cli.js $@
     ;;
 esac
-
 
