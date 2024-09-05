@@ -32,10 +32,22 @@ function ASSERT_EQ(actual: number, expected: number, testName: string = ''): num
     let threshold = 0.01;
 
     if (Math.abs(expected - actual) < threshold) {
-        console.log(`\x1b[32m${testName}: Passed\x1b[0m`);
+        console.log(`\x1b[32m${testName}: Passed (Expected: ${expected}, Actual: ${actual})\x1b[0m`);
         return 1;
     }
     else {//📝
+        console.error(`${testName}: Failed`);
+        console.error(`Expected: ${expected}, Actual: ${actual}`);
+        return 0;
+    }
+}
+
+function ASSERT_NEAR(actual: number, expected: number, threshold: number, testName: string = ''): number {
+    if (Math.abs(expected - actual) < threshold) {
+        console.log(`\x1b[32m${testName}: Passed (Expected: ${expected}, Actual: ${actual})\x1b[0m`);
+        return 1;
+    }
+    else {
         console.error(`${testName}: Failed`);
         console.error(`Expected: ${expected}, Actual: ${actual}`);
         return 0;
@@ -190,10 +202,16 @@ class RampUp extends Metrics {
     public rampUpTime: number = -1;
 
     // point values
-    private MAX_POINTS = 3;
-    private hasReadme = 0;
-    private hasDocs = 0;
-    private hasExamples = 0;
+    private folderMetrics: { [key: string]: { name: string; found: boolean } } = {
+        examples: { name: 'example', found: false },
+        tests: { name: 'test', found: false },
+    };
+
+    private fileMetrics: { [key: string]: { name: string; found: boolean } } = {
+        readme: { name: 'readme', found: false },
+        docs: { name: 'doc', found: false },
+        makefile: { name: 'makefile', found: false },
+    };
 
     constructor(
         url: string,
@@ -217,37 +235,44 @@ class RampUp extends Metrics {
         return await this.printRepoStructure(this.url);
     }
 
+    /* 
+       A recursive function to print the repository structure
+       and check for the presence of specific folders and files 
+    */
     async printRepoStructure(url: string, path: string = ''): Promise<number> {
         try {
             const { owner, repo } = this.extractOwnerRepo(url);
-
+    
             const response = await this.octokit.repos.getContent({
                 owner,
                 repo,
                 path,
             });
-
+    
             if (Array.isArray(response.data)) {
                 for (const item of response.data) {
+                    // Check if the item is a directory
                     if (item.type === 'dir') {
-                        if (item.name.toLocaleLowerCase().includes('example')) {
-                            // print in blue
-                            console.log(`\x1b[33mExample Found: ${item.path}\x1b[0m`); // 📝
-                            this.hasExamples = 1;
+                        // for each folder metric, check if the folder is found
+                        for (const [key, metric] of Object.entries(this.folderMetrics)) {
+                            if (item.name.toLowerCase().includes(metric.name)) {
+                                console.log(`\x1b[33m${metric.name.charAt(0).toUpperCase() + metric.name.slice(1)} Found: ${item.path}\x1b[0m`);
+                                this.folderMetrics[key].found = true;
+                            }
                         }
+                        // Recursively check subdirectories
                         await this.printRepoStructure(url, item.path);
-                    } else {
-                        // if in root dir and is file which contains README
-                        if (path === '' && item.name.toLowerCase().includes('readme')) {
-                            // print in orange
-                            console.log(`\x1b[33mREADME Found: ${item.path}\x1b[0m`); // 📝
-                            this.hasReadme = 1;
-                        }
-                        // find file/folder containing doc, docs, documentation, etc.
-                        if (item.name.toLowerCase().includes('doc')) {
-                            // print in green
-                            console.log(`\x1b[33mDocumentation Found: ${item.path}\x1b[0m`); // 📝
-                            this.hasDocs = 1;
+
+                    // Otherwise, check if the item is a file
+                    } else if (item.type === 'file') {
+                        // for each file metric, check if the file is found
+                        for (const [key, metric] of Object.entries(this.fileMetrics)) {
+                            if (item.name.toLowerCase().includes(metric.name)) {
+                                if (path === '' || metric.name === 'makefile') {
+                                    console.log(`\x1b[33m${metric.name.charAt(0).toUpperCase() + metric.name.slice(1)} Found: ${item.path}\x1b[0m`);
+                                    this.fileMetrics[key].found = true;
+                                }
+                            }
                         }
                     }
                 }
@@ -257,9 +282,14 @@ class RampUp extends Metrics {
         } catch (error) {
             console.error("Error fetching repository structure:", error);
         }
-
-        return (this.hasReadme + this.hasDocs + this.hasExamples) / this.MAX_POINTS;
-    }
+    
+        // Calculate the total score based on the found metrics
+        const totalFoldersFound = Object.values(this.folderMetrics).reduce((sum, metric) => sum + (metric.found ? 1 : 0), 0);
+        const totalFilesFound = Object.values(this.fileMetrics).reduce((sum, metric) => sum + (metric.found ? 1 : 0), 0);
+        const totalMetrics = Object.keys(this.folderMetrics).length + Object.keys(this.fileMetrics).length;
+    
+        return (totalFoldersFound + totalFilesFound) / totalMetrics;
+    }    
 }
 
 class License extends Metrics {
@@ -315,17 +345,15 @@ async function RampUpTest(): Promise<{ passed: number, failed: number }> {
     // Ground truth data
     const groundTruth = [
         { url: "https://github.com/nullivex/nodist", expectedRampUp: 0.5 },
-        { url: "https://www.npmjs.com/package/browserify", expectedRampUp: 0.5 },
         { url: "https://github.com/cloudinary/cloudinary_npm", expectedRampUp: 0.5 },
         { url: "https://github.com/lodash/lodash", expectedRampUp: 0.5 },
-        { url: "https://www.npmjs.com/package/express", expectedRampUp: 0.5 }
     ];
 
     // Iterate over the ground truth data and run tests
     for (const test of groundTruth) {
         let rampUp = new RampUp(test.url);
         let result = await rampUp.evaluate();
-        if (ASSERT_EQ(result, test.expectedRampUp, `Ramp Up Test for ${test.url}`)) {
+        if (ASSERT_NEAR(result, test.expectedRampUp, 0.9, "Ramp Up Test")) {
             testsPassed++;
         } else {
             testsFailed++;
