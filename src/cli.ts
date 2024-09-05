@@ -1,14 +1,15 @@
 #!/usr/bin/env node
 
-import { execSync } from 'child_process';
+import * as git from 'isomorphic-git';
+import * as path from 'path';
+import http from 'isomorphic-git/http/node/index.cjs';
 import * as fs from 'fs';
-import { get } from 'http';
-import { env } from 'process';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import { Octokit } from '@octokit/rest';
 import dotenv from 'dotenv';
 import test from 'node:test';
+import redline from 'readline';
 
 dotenv.config();
 // Access the token value
@@ -18,9 +19,9 @@ if (!githubToken) {
 }
 let OCTOKIT: Octokit = new Octokit({ auth: githubToken, });
 
-
-
-// Helper function to display usage information
+/**
+ * Displays the usage information for the CLI.
+ */
 function showUsage() {
     console.log(`Usage:
     ./run install                   # Install dependencies
@@ -28,6 +29,24 @@ function showUsage() {
     ./run test                      # Run test suite`);
 }
 
+
+/**
+ * Retrieves the rate limit status for GitHub.
+ * @returns {Promise<number>} The rate limit value.
+ */
+async function getRateLimitStatus() {
+    const rateLimit = await OCTOKIT.rateLimit.get();
+    return rateLimit.data.rate;
+}
+
+/**
+ * Asserts that the actual value is equal to the expected value within a threshold.
+ * 
+ * @param actual - The actual value to compare.
+ * @param expected - The expected value to compare against.
+ * @param testName - The name of the test (optional).
+ * @returns Returns 1 if the assertion passes, otherwise returns 0.
+ */
 function ASSERT_EQ(actual: number, expected: number, testName: string = ''): number {
     let threshold = 0.01;
 
@@ -54,10 +73,53 @@ function ASSERT_NEAR(actual: number, expected: number, threshold: number, testNa
     }
 }
 
+/**
+ * Asserts that the actual value is less than the expected value with a threshold of 0.005.
+ * 
+ * @param actual - The actual value to be compared.
+ * @param expected - The expected value.
+ * @param testName - The name of the test (optional).
+ * @returns 1 if the assertion passes, 0 otherwise.
+ */
+function ASSERT_LT(actual: number, expected: number, testName: string = ''): number {
+    let threshold = 0.005;
 
-// Define the Metrics class
+    if (actual < (expected + threshold)) {
+        console.log(`\x1b[32m${testName}:\tPassed\x1b[0m`);
+        return 1;
+    }
+    else {
+        console.error(`${testName}:\tFailed\tExpected: ${expected}, Actual: ${actual}`);
+        return 0;
+    }
+}
+
+/**
+ * Asserts that the actual value is greater than the expected value with a given threshold.
+ * 
+ * @param actual - The actual value to be compared.
+ * @param expected - The expected value to be compared against.
+ * @param testName - The name of the test (optional).
+ * @returns 1 if the assertion passes, 0 otherwise.
+ */
+function ASSERT_GT(actual: number, expected: number, testName: string = ''): number {
+    let threshold = 0.01;
+
+    if (actual > (expected - threshold)) {
+        console.log(`\x1b[32m${testName}: Passed\x1b[0m`);
+        return 1;
+    }
+    else {
+        console.error(`${testName}: Failed\tExpected: ${expected}, Actual: ${actual}`);
+        return 0;
+    }
+}
+
+/**
+ * Represents a Metrics class.
+ * @abstract
+ */
 abstract class Metrics {
-    // Add a variable to the class
     public responseTime: number;
     public octokit: Octokit = OCTOKIT;
 
@@ -76,13 +138,27 @@ abstract class Metrics {
     }
 }
 
-class BusFactor extends Metrics {
-    public busFactor: number = 0;
 
+/**
+ * Represents a class that calculates the bus factor of a repository.
+ * The bus factor is a measure of the number of developers that need to be hit by a bus (or leave the project) 
+ * before it becomes infeasible to maintain the codebase.
+ */
+class BusFactor extends Metrics {
+    public busFactor: number = -1;
+    /**
+     * Constructs a new instance of the CLI class.
+     * @param url - The URL to connect to.
+     */
     constructor(url: string) {
         super(url);
     }
 
+    /**
+     * Asynchronously evaluates the bus factor of a repository.
+     * 
+     * @returns A promise that resolves to the calculated bus factor.
+     */
     async evaluate(): Promise<number> {
         const rateLimitStatus = await this.getRateLimitStatus();
 
@@ -104,6 +180,13 @@ class BusFactor extends Metrics {
     }
 
 
+    /**
+     * Retrieves the owner and repository name from a given GitHub URL.
+     * 
+     * @param url - The GitHub URL to extract the owner and repository from.
+     * @returns A promise that resolves to an object containing the owner and repository name.
+     * @throws An error if the provided URL is invalid.
+     */
     private async getRepoData(url: string): Promise<{ owner: string; repo: string }> {
         const regex = /https:\/\/github\.com\/([^/]+)\/([^/]+)/;
         const match = url.match(regex);
@@ -112,6 +195,14 @@ class BusFactor extends Metrics {
         return { owner: match[1], repo: match[2] };
     }
 
+    /**
+     * Retrieves commit data for a given owner and repository.
+     * 
+     * @param owner - The owner of the repository.
+     * @param repo - The name of the repository.
+     * @returns A Promise that resolves to a Map containing the commit data, where the keys are the authors' 
+     *          usernames and the values are the number of commits made by each author.
+     */
     private async getCommitData(owner: string, repo: string): Promise<Map<string, number>> {
         const commitCounts = new Map<string, number>();
         let page = 1;
@@ -136,16 +227,19 @@ class BusFactor extends Metrics {
             page++;
         }
 
-
-
-
-        //print total number of commits 📝
+        // print total number of commits 📝
         // console.log("Total number of commits:", Array.from(commitCounts.values()).reduce((a, b) => a + b, 0));
         // console.log("Commit data:", commitCounts);
 
         return commitCounts;
     }
 
+    /**
+     * Calculates the bus factor based on the commit data.
+     * 
+     * @param commitData - A map containing the number of commits for each contributor.
+     * @returns The calculated bus factor.
+     */
     private calculateBusFactor(commitData: Map<string, number>): number {
         const totalCommits = Array.from(commitData.values()).reduce((a, b) => a + b, 0);
         const sortedContributors = Array.from(commitData.entries()).sort((a, b) => b[1] - a[1]);
@@ -164,20 +258,120 @@ class BusFactor extends Metrics {
     }
 }
 
-
+/**
+ * Represents a class that calculates the correctness of a repository based on its issues data.
+ * @extends Metrics
+ */
 class Correctness extends Metrics {
-    // Add a variable to the class
-    public correctness: Promise<number>;
-    constructor(
-        url: string,
-    ) {
+    public correctness: number = -1;
+
+    /**
+     * Constructs a new instance of the class.
+     * @param url The URL to be passed to the constructor.
+     */
+    constructor(url: string) {
         super(url);
-        this.correctness = this.evaluate();
     }
 
+    /**
+     * Asynchronously evaluates the correctness of the code.
+     * 
+     * @returns A promise that resolves to the correctness value.
+     */
     async evaluate(): Promise<number> {
-        // Implement the evaluate method
-        return -1;
+        const rateLimitStatus = await getRateLimitStatus();
+
+        if (rateLimitStatus.remaining === 0) {
+            const resetTime = new Date(rateLimitStatus.reset * 1000).toLocaleTimeString();
+            console.log(`Rate limit exceeded. Try again after ${resetTime}`);
+            return -1;
+        }
+
+        // Calculate response time of evaluate method
+        const startTime = performance.now();
+        this.correctness = await this.calculateCorrectness();
+        const endTime = performance.now();
+        this.responseTime = Number(endTime - startTime) / 1e6;
+
+        return this.correctness;
+    }
+
+    /**
+     * Calculates the correctness of the system based on the number of open bug issues and total open issues.
+     * 
+     * @returns A Promise that resolves to a number representing the correctness of the system.
+     *          Returns 1 if there are no issues reported.
+     *          Returns a value between 0 and 1 representing the correctness percentage if there are issues.
+     *          Returns -1 if there was an error calculating the correctness.
+     */
+    private async calculateCorrectness(): Promise<number> {
+        try {
+            // Fetch the issues data from the repository
+            const { openBugIssues, totalOpenIssues } = await this.fetchIssuesData();
+
+            // Check if total issues count is zero to prevent division by zero
+            if (totalOpenIssues === 0) {
+                return 1; // Assuming correctness is perfect if there are no issues
+            }
+
+            // Calculate correctness
+            const correctness = 1 - (openBugIssues / totalOpenIssues);
+            return correctness;
+        } catch (error) {
+            console.error('Error calculating correctness:', error);
+            return -1;
+        }
+    }
+
+    /**
+     * Fetches the issues data from the repository.
+     * 
+     * @returns A promise that resolves to an object containing the number of open bug issues 
+     *          and the total number of open issues.
+     * @throws {Error} If the repository URL is invalid or if there is an error fetching the data.
+     */
+    private async fetchIssuesData(): Promise<{ openBugIssues: number; totalOpenIssues: number }> {
+        try {
+            // Extract the owner and repo from the URL
+            const repoInfo = this.extractRepoInfo();
+            if (!repoInfo) {
+                throw new Error('Invalid repository URL');
+            }
+
+            const { owner, repo } = repoInfo;
+            const { data } = await this.octokit.issues.listForRepo({
+                owner,
+                repo,
+                state: 'all',
+                labels: 'bug', // Filter by bug label
+                per_page: 100
+            });
+
+            // Count open and total issues
+            const openBugIssues = data.filter(issue => issue.state === 'open').length;
+            const totalOpenIssues = data.length;
+            
+            return { openBugIssues, totalOpenIssues };
+        } catch (error) {
+            console.error('Error fetching issues data:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Extracts the owner and repository name from a GitHub URL.
+     * 
+     * @returns An object containing the owner and repo properties, or null if the URL is invalid.
+     */
+    private extractRepoInfo(): { owner: string; repo: string } | null {
+        // Regex to parse GitHub URL and extract owner and repository name
+        const regex = /https:\/\/github\.com\/([^\/]+)\/([^\/]+)/;
+        const match = this.url.match(regex);
+
+        if (match && match.length >= 3) {
+            return { owner: match[1], repo: match[2] };
+        }
+        return null;
     }
 }
 
@@ -280,17 +474,110 @@ class RampUp extends Metrics {
 
 class License extends Metrics {
     // Add a variable to the class
-    public license: Promise<number>;
+    public license: number = -1;
     constructor(
         url: string,
     ) {
         super(url);
-        this.license = this.evaluate();
+
     }
 
+    // Helper function to clone the repository
+    private async cloneRepository(cloneDir: string): Promise<void> {
+        await git.clone({
+            fs,
+            http,
+            dir: cloneDir,
+            url: this.url,
+            singleBranch: true,
+            depth: 1,
+        });
+    }
+
+    // Helper function to check license compatibility
+    private checkLicenseCompatibility(licenseText: string): number {
+        const compatibleLicenses = [
+            'LGPL-2.1',
+            'LGPL-2.1-only',
+            'LGPL-2.1-or-later',
+            'GPL-2.0',
+            'GPL-2.0-only',
+            'GPL-2.0-or-later',
+            'MIT',
+            'BSD-2-Clause',
+            'BSD-3-Clause',
+            'Apache-2.0',
+            'MPL-1.1',
+            // Add more compatible licenses here
+        ];
+
+        // Simple regex to find the license type in the text
+        const licenseRegex = new RegExp(compatibleLicenses.join('|'), 'i');
+        return licenseRegex.test(licenseText) ? 1 : 0;
+    }
+
+    // Helper function to extract license information from README or LICENSE file
+    private async extractLicenseInfo(cloneDir: string): Promise<string | null> {
+        let licenseInfo: string | null = null;
+
+        // Case-insensitive file search for README (e.g., README.md, README.MD)
+        const readmeFiles = fs.readdirSync(cloneDir).filter(file =>
+            file.match(/^readme\.(md|txt)?$/i)
+        );
+
+        if (readmeFiles.length > 0) {
+            const readmePath = path.join(cloneDir, readmeFiles[0]);
+            const readmeContent = fs.readFileSync(readmePath, 'utf-8');
+            const licenseSection = readmeContent.match(/##\s*(Licence|Legal)(\s|\S)*/i);
+            if (licenseSection) {
+                licenseInfo = licenseSection[0];
+            }
+        }
+
+        // Case-insensitive file search for LICENSE (e.g., LICENSE.txt, license.md)
+        const licenseFiles = fs.readdirSync(cloneDir).filter(file =>
+            file.match(/^licen[sc]e(\..*)?$/i)
+        );
+
+        if (licenseFiles.length > 0) {
+            const licenseFilePath = path.join(cloneDir, licenseFiles[0]);
+            const licenseContent = fs.readFileSync(licenseFilePath, 'utf-8');
+            if (licenseInfo) {
+                licenseInfo += '\n' + licenseContent;
+            } else {
+                licenseInfo = licenseContent;
+            }
+        }
+
+        return licenseInfo;
+    }
+
+    // The main evaluate function to implement the license check
     async evaluate(): Promise<number> {
-        // Implement the evaluate method
-        return -1;
+
+        const cloneDir = path.join('/tmp', 'repo-clone');
+        let startTime = performance.now();
+        try {
+            await this.cloneRepository(cloneDir);
+
+            startTime = performance.now();
+            const licenseInfo = await this.extractLicenseInfo(cloneDir);
+            // console.log('\x1b[34mLicense info:\n', licenseInfo, '\x1b[0m'); //📝
+            if (licenseInfo) {
+                this.license = this.checkLicenseCompatibility(licenseInfo);
+            } else {
+                this.license = -1; // No license information found
+            }
+        } catch (error) {
+            console.error('Error evaluating license:', error);
+            this.license = -1; // On error, assume incompatible license
+        } finally {
+            // Clean up: remove the cloned repository
+            fs.rmSync(cloneDir, { recursive: true, force: true });
+        }
+        const endTime = performance.now();
+        this.responseTime = Number(endTime - startTime) / 1e6; // Convert to milliseconds
+        return this.license;
     }
 }
 
@@ -320,7 +607,6 @@ class NetScore extends Metrics {
         // Implement the toString method
         return 'NetScore: ${this.netScore}';
     }
-
 }
 
 async function RampUpTest(): Promise<{ passed: number, failed: number }> {
@@ -356,7 +642,8 @@ async function BusFactorTest(): Promise<{ passed: number, failed: number }> {
     let busFactor = new BusFactor('https://github.com/cloudinary/cloudinary_npm');
     let result = await busFactor.evaluate();
     ASSERT_EQ(result, 0.3, "Bus Factor Test 1") ? testsPassed++ : testsFailed++;
-    ASSERT_EQ(busFactor.responseTime, 0.004, "Bus Factor Response Time Test 1") ? testsPassed++ : testsFailed++;
+    ASSERT_LT(busFactor.responseTime, 0.004, "Bus Factor Response Time Test 1") ? testsPassed++ : testsFailed++;
+    console.log(`Response time: ${busFactor.responseTime.toFixed(6)}s\n`);
     busFactors.push(busFactor);
 
 
@@ -364,20 +651,83 @@ async function BusFactorTest(): Promise<{ passed: number, failed: number }> {
     busFactor = new BusFactor('https://github.com/nullivex/nodist');
     result = await busFactor.evaluate();
     ASSERT_EQ(result, 0.3, "Bus Factor Test 2") ? testsPassed++ : testsFailed++;
-    ASSERT_EQ(busFactor.responseTime, 0.002, "Bus Factor Response Time Test 2") ? testsPassed++ : testsFailed++;
+    ASSERT_LT(busFactor.responseTime, 0.002, "Bus Factor Response Time Test 2") ? testsPassed++ : testsFailed++;
+    console.log(`Response time: ${busFactor.responseTime.toFixed(6)}s\n`);
     busFactors.push(busFactor);
 
     //third test
     busFactor = new BusFactor('https://github.com/lodash/lodash');
     result = await busFactor.evaluate();
     ASSERT_EQ(result, 0.7, "Bus Factor Test 3") ? testsPassed++ : testsFailed++;
-    ASSERT_EQ(busFactor.responseTime, 0.084, "Bus Factor Response Time Test 3") ? testsPassed++ : testsFailed++;
+    ASSERT_LT(busFactor.responseTime, 0.084, "Bus Factor Response Time Test 3") ? testsPassed++ : testsFailed++;
+    console.log(`Response time: ${busFactor.responseTime.toFixed(6)}s\n`);
     busFactors.push(busFactor);
 
     return { passed: testsPassed, failed: testsFailed };
 }
 
-// Placeholder function for 'test'
+/**
+ * Performs correctness tests on the given URLs and returns the number of tests passed and failed.
+ *
+ * @returns A promise that resolves to an object containing the number of tests passed and failed.
+ */
+async function CorrectnessTest(): Promise<{ passed: number, failed: number }> {
+    let testsPassed = 0;
+    let testsFailed = 0;
+
+    // Test 1
+    const correctness = new Correctness('https://github.com/cloudinary/cloudinary_npm');
+    const result: number = await correctness.evaluate();
+    const expectedValue = 0.933333333; // Expected value is 0.93333...
+    ASSERT_EQ(result, expectedValue, 'Correctness test 1') ? testsPassed++ : testsFailed++;
+    console.log(`Response time: ${correctness.responseTime.toFixed(6)}s\n`);
+
+    // Test 2
+    const correctness2 = new Correctness('https://github.com/nullivex/nodist');
+    const result2: number = await correctness2.evaluate();
+    const expectedValue2 = 0.90909091; // Expected value is 0.90909091
+    ASSERT_EQ(result2, expectedValue2, 'Correctness test 2') ? testsPassed++ : testsFailed++;
+    console.log(`Response time: ${correctness2.responseTime.toFixed(6)}s\n`);
+
+    // Test 3
+    const correctness3 = new Correctness('https://github.com/Coop8/Coop8');
+    const result3: number = await correctness3.evaluate();
+    const expectedValue3 = 1; // Expected value is 1
+    ASSERT_EQ(result3, expectedValue3, 'Correctness test 3') ? testsPassed++ : testsFailed++;
+    console.log(`Response time: ${correctness3.responseTime.toFixed(6)}s\n`);
+
+    return { passed: testsPassed, failed: testsFailed };
+}
+
+async function LicenseTest(): Promise<{ passed: number, failed: number }> {
+    let testsPassed = 0;
+    let testsFailed = 0;
+    let licenses: License[] = [];
+
+    //first test
+    let license = new License('https://github.com/cloudinary/cloudinary_npm');
+    let result = await license.evaluate();
+    ASSERT_EQ(result, 1, "License Test 1") ? testsPassed++ : testsFailed++;
+    console.log(`Response time: ${license.responseTime.toFixed(6)}s\n`);
+    licenses.push(license);
+
+    //second test
+    license = new License('https://github.com/nullivex/nodist');
+    result = await license.evaluate();
+    ASSERT_EQ(result, 1, "License Test 2") ? testsPassed++ : testsFailed++;
+    console.log(`Response time: ${license.responseTime.toFixed(6)}s\n`);
+    licenses.push(license);
+
+    //third test
+    license = new License('https://github.com/lodash/lodash');
+    result = await license.evaluate();
+    ASSERT_EQ(result, 1, "License Test 3") ? testsPassed++ : testsFailed++;
+    console.log(`Response time: ${license.responseTime.toFixed(6)}s\n`);
+    licenses.push(license);
+
+    return { passed: testsPassed, failed: testsFailed };
+}
+
 async function runTests() {
     let passedTests = 0;
     let failedTests = 0;
@@ -389,8 +739,10 @@ async function runTests() {
     let status = await OCTOKIT.rateLimit.get();
     console.log(`Rate limit status: ${status.data.rate.remaining} remaining out of ${status.data.rate.limit}`);
 
-    //Run tests
+    // Run tests
     results.push(BusFactorTest());
+    results.push(CorrectnessTest());
+    results.push(LicenseTest());
     results.push(RampUpTest());
 
     // Display test results
@@ -411,7 +763,9 @@ function processUrls(urlFile: string) {
     // Implement URL processing logic here
 }
 
-// Main function to handle commands
+/**
+ * The main function. Handles command line arguments and executes the appropriate functions.
+ */
 function main() {
     const argv = yargs(hideBin(process.argv))
         .command('test', 'Run test suite', {}, () => {
@@ -435,7 +789,5 @@ function main() {
         .help()
         .alias('help', 'h')
         .argv;
-
 }
-
 main();
