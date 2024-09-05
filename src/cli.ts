@@ -51,7 +51,7 @@ function ASSERT_EQ(actual: number, expected: number, testName: string = ''): num
     let threshold = 0.01;
 
     if (Math.abs(expected - actual) < threshold) {
-        console.log(`\x1b[32m${testName}: Passed (Expected: ${expected}, Actual: ${actual})\x1b[0m`);
+        console.log(`\x1b[32m${testName}: Passed\x1b[0m`);
         return 1;
     }
     else {//📝
@@ -396,7 +396,7 @@ class RampUp extends Metrics {
     public rampUpTime: number = -1;
 
     // point values
-    private Metrics: { [key: string]: { name: string; found: boolean, fileType: string} } = {
+    private metrics: { [key: string]: { name: string; found: boolean, fileType: string} } = {
         example: { name: 'example', found: false, fileType: 'either' },
         test: { name: 'test', found: false, fileType: 'either' },
         readme: { name: 'readme', found: false, fileType: 'file' },
@@ -447,10 +447,10 @@ class RampUp extends Metrics {
             if (Array.isArray(response.data)) {
                 for (const item of response.data) {
                     // check each metric to see if it is found
-                    for (const [key, metric] of Object.entries(this.Metrics)) {
+                    for (const [key, metric] of Object.entries(this.metrics)) {
                         // ensure the item type = metric type, or the metric type is 'either'. Then check if the metric name is in the item name
                         if ((item.type === metric.fileType || metric.fileType === 'either') && item.name.toLowerCase().includes(metric.name)) {
-                            this.Metrics[key].found = true;
+                            this.metrics[key].found = true;
                         }
                     }
                     // Recursively check subdirectories after checking each metric
@@ -464,8 +464,8 @@ class RampUp extends Metrics {
         }
     
         // Calculate the total score based on the found metrics
-        const totalFound = Object.values(this.Metrics).reduce((sum, metric) => sum + (metric.found ? 1 : 0), 0);
-        const totalMetrics = Object.keys(this.Metrics).length
+        const totalFound = Object.values(this.metrics).reduce((sum, metric) => sum + (metric.found ? 1 : 0), 0);
+        const totalMetrics = Object.keys(this.metrics).length
     
         return (totalFound) / totalMetrics;
     }    
