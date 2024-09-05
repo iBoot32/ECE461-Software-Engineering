@@ -202,15 +202,12 @@ class RampUp extends Metrics {
     public rampUpTime: number = -1;
 
     // point values
-    private folderMetrics: { [key: string]: { name: string; found: boolean } } = {
-        examples: { name: 'example', found: false },
-        tests: { name: 'test', found: false },
-    };
-
-    private fileMetrics: { [key: string]: { name: string; found: boolean } } = {
-        readme: { name: 'readme', found: false },
-        docs: { name: 'doc', found: false },
-        makefile: { name: 'makefile', found: false },
+    private Metrics: { [key: string]: { name: string; found: boolean, fileType: string} } = {
+        example: { name: 'example', found: false, fileType: 'either' },
+        test: { name: 'test', found: false, fileType: 'either' },
+        readme: { name: 'readme', found: false, fileType: 'file' },
+        doc: { name: 'doc', found: false, fileType: 'either' },
+        makefile: { name: 'makefile', found: false, fileType: 'file' },
     };
 
     constructor(
@@ -232,7 +229,12 @@ class RampUp extends Metrics {
     }
 
     async evaluate(): Promise<number> {
-        return await this.printRepoStructure(this.url);
+        const startTime = performance.now();
+        this.rampUpTime = await this.printRepoStructure(this.url);
+        const endTime = performance.now();
+        const elapsedTime = Number(endTime - startTime) / 1e6; // Convert to milliseconds
+        this.responseTime = elapsedTime;
+        return this.rampUpTime;
     }
 
     /* 
@@ -242,7 +244,6 @@ class RampUp extends Metrics {
     async printRepoStructure(url: string, path: string = ''): Promise<number> {
         try {
             const { owner, repo } = this.extractOwnerRepo(url);
-    
             const response = await this.octokit.repos.getContent({
                 owner,
                 repo,
@@ -251,44 +252,29 @@ class RampUp extends Metrics {
     
             if (Array.isArray(response.data)) {
                 for (const item of response.data) {
-                    // Check if the item is a directory
-                    if (item.type === 'dir') {
-                        // for each folder metric, check if the folder is found
-                        for (const [key, metric] of Object.entries(this.folderMetrics)) {
-                            if (item.name.toLowerCase().includes(metric.name)) {
-                                console.log(`\x1b[33m${metric.name.charAt(0).toUpperCase() + metric.name.slice(1)} Found: ${item.path}\x1b[0m`);
-                                this.folderMetrics[key].found = true;
-                            }
-                        }
-                        // Recursively check subdirectories
-                        await this.printRepoStructure(url, item.path);
-
-                    // Otherwise, check if the item is a file
-                    } else if (item.type === 'file') {
-                        // for each file metric, check if the file is found
-                        for (const [key, metric] of Object.entries(this.fileMetrics)) {
-                            if (item.name.toLowerCase().includes(metric.name)) {
-                                if (path === '' || metric.name === 'makefile') {
-                                    console.log(`\x1b[33m${metric.name.charAt(0).toUpperCase() + metric.name.slice(1)} Found: ${item.path}\x1b[0m`);
-                                    this.fileMetrics[key].found = true;
-                                }
-                            }
+                    // check each metric to see if it is found
+                    for (const [key, metric] of Object.entries(this.Metrics)) {
+                        // ensure the item type = metric type, or the metric type is 'either'. Then check if the metric name is in the item name
+                        if ((item.type === metric.fileType || metric.fileType === 'either') && item.name.toLowerCase().includes(metric.name)) {
+                            // console.log(`\x1b[33m${metric.name.charAt(0).toUpperCase() + metric.name.slice(1)} Found: ${item.path}\x1b[0m`);
+                            this.Metrics[key].found = true;
                         }
                     }
+                    // Recursively check subdirectories after checking each metric
+                    if (item.type === 'dir') {
+                        await this.printRepoStructure(url, item.path);
+                    }
                 }
-            } else {
-                console.log(`File: ${response.data.path}`);
             }
         } catch (error) {
             console.error("Error fetching repository structure:", error);
         }
     
         // Calculate the total score based on the found metrics
-        const totalFoldersFound = Object.values(this.folderMetrics).reduce((sum, metric) => sum + (metric.found ? 1 : 0), 0);
-        const totalFilesFound = Object.values(this.fileMetrics).reduce((sum, metric) => sum + (metric.found ? 1 : 0), 0);
-        const totalMetrics = Object.keys(this.folderMetrics).length + Object.keys(this.fileMetrics).length;
+        const totalFound = Object.values(this.Metrics).reduce((sum, metric) => sum + (metric.found ? 1 : 0), 0);
+        const totalMetrics = Object.keys(this.Metrics).length
     
-        return (totalFoldersFound + totalFilesFound) / totalMetrics;
+        return (totalFound) / totalMetrics;
     }    
 }
 
@@ -353,11 +339,8 @@ async function RampUpTest(): Promise<{ passed: number, failed: number }> {
     for (const test of groundTruth) {
         let rampUp = new RampUp(test.url);
         let result = await rampUp.evaluate();
-        if (ASSERT_NEAR(result, test.expectedRampUp, 0.9, "Ramp Up Test")) {
-            testsPassed++;
-        } else {
-            testsFailed++;
-        }
+        ASSERT_EQ(result, test.expectedRampUp, `RampUp Test for ${test.url}`) ? testsPassed++ : testsFailed++;
+
         rampUps.push(rampUp);
     }
 
