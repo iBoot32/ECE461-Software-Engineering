@@ -66,4 +66,3 @@ case $1 in
     ./dist/cli.js $@
     ;;
 esac
-
