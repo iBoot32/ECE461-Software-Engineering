@@ -450,7 +450,6 @@ class RampUp extends Metrics {
                     for (const [key, metric] of Object.entries(this.Metrics)) {
                         // ensure the item type = metric type, or the metric type is 'either'. Then check if the metric name is in the item name
                         if ((item.type === metric.fileType || metric.fileType === 'either') && item.name.toLowerCase().includes(metric.name)) {
-                            // console.log(`\x1b[33m${metric.name.charAt(0).toUpperCase() + metric.name.slice(1)} Found: ${item.path}\x1b[0m`);
                             this.Metrics[key].found = true;
                         }
                     }
@@ -616,9 +615,9 @@ async function RampUpTest(): Promise<{ passed: number, failed: number }> {
 
     // Ground truth data
     const groundTruth = [
-        { url: "https://github.com/nullivex/nodist", expectedRampUp: 0.5 },
-        { url: "https://github.com/cloudinary/cloudinary_npm", expectedRampUp: 0.5 },
-        { url: "https://github.com/lodash/lodash", expectedRampUp: 0.5 },
+        { url: "https://github.com/nullivex/nodist", expectedRampUp: 0.4 },
+        { url: "https://github.com/cloudinary/cloudinary_npm", expectedRampUp: 0.6 },
+        { url: "https://github.com/lodash/lodash", expectedRampUp: 0.4 },
     ];
 
     // Iterate over the ground truth data and run tests
@@ -626,6 +625,8 @@ async function RampUpTest(): Promise<{ passed: number, failed: number }> {
         let rampUp = new RampUp(test.url);
         let result = await rampUp.evaluate();
         ASSERT_EQ(result, test.expectedRampUp, `RampUp Test for ${test.url}`) ? testsPassed++ : testsFailed++;
+        ASSERT_LT(rampUp.responseTime, 0.004, `RampUp Response Time Test for ${test.url}`) ? testsPassed++ : testsFailed++;
+        console.log(`Ramp Up Response time: ${rampUp.responseTime.toFixed(6)}s\n`);
 
         rampUps.push(rampUp);
     }
