@@ -311,10 +311,13 @@ class License extends Metrics {
 
     // The main evaluate function to implement the license check
     async evaluate(): Promise<number> {
+
         const cloneDir = path.join('/tmp', 'repo-clone');
+        let startTime = performance.now();
         try {
             await this.cloneRepository(cloneDir);
 
+            startTime = performance.now();
             const licenseInfo = await this.extractLicenseInfo(cloneDir);
             // console.log('\x1b[34mLicense info:\n', licenseInfo, '\x1b[0m'); //📝
             if (licenseInfo) {
@@ -329,6 +332,8 @@ class License extends Metrics {
             // Clean up: remove the cloned repository
             fs.rmSync(cloneDir, { recursive: true, force: true });
         }
+        const endTime = performance.now();
+        this.responseTime = Number(endTime - startTime) / 1e6; // Convert to milliseconds
         return this.license;
     }
 }
