@@ -61,6 +61,18 @@ function ASSERT_EQ(actual: number, expected: number, testName: string = ''): num
     }
 }
 
+function ASSERT_NEAR(actual: number, expected: number, threshold: number, testName: string = ''): number {
+    if (Math.abs(expected - actual) < threshold) {
+        console.log(`\x1b[32m${testName}: Passed (Expected: ${expected}, Actual: ${actual})\x1b[0m`);
+        return 1;
+    }
+    else {
+        console.error(`${testName}: Failed`);
+        console.error(`Expected: ${expected}, Actual: ${actual}`);
+        return 0;
+    }
+}
+
 /**
  * Asserts that the actual value is less than the expected value with a threshold of 0.005.
  * 
@@ -381,18 +393,82 @@ class Maintainability extends Metrics {
 
 class RampUp extends Metrics {
     // Add a variable to the class
-    public rampUpTime: Promise<number>;
+    public rampUpTime: number = -1;
+
+    // point values
+    private metrics: { [key: string]: { name: string; found: boolean, fileType: string} } = {
+        example: { name: 'example', found: false, fileType: 'either' },
+        test: { name: 'test', found: false, fileType: 'either' },
+        readme: { name: 'readme', found: false, fileType: 'file' },
+        doc: { name: 'doc', found: false, fileType: 'either' },
+        makefile: { name: 'makefile', found: false, fileType: 'file' },
+    };
+
     constructor(
         url: string,
     ) {
         super(url);
-        this.rampUpTime = this.evaluate();
+    }
+
+    private extractOwnerRepo(url: string): { owner: string; repo: string } {
+        const match = url.match(/github\.com\/([^\/]+)\/([^\/]+)/);
+        if (!match) {
+            throw new Error("Invalid GitHub URL");
+        }
+
+        return {
+            owner: match[1],
+            repo: match[2],
+        };
     }
 
     async evaluate(): Promise<number> {
-        // Implement the evaluate method
-        return -1;
+        const startTime = performance.now();
+        this.rampUpTime = await this.printRepoStructure(this.url);
+        const endTime = performance.now();
+        const elapsedTime = Number(endTime - startTime) / 1e6; // Convert to milliseconds
+        this.responseTime = elapsedTime;
+        return this.rampUpTime;
     }
+
+    /* 
+       A recursive function to print the repository structure
+       and check for the presence of specific folders and files 
+    */
+    async printRepoStructure(url: string, path: string = ''): Promise<number> {
+        try {
+            const { owner, repo } = this.extractOwnerRepo(url);
+            const response = await this.octokit.repos.getContent({
+                owner,
+                repo,
+                path,
+            });
+    
+            if (Array.isArray(response.data)) {
+                for (const item of response.data) {
+                    // check each metric to see if it is found
+                    for (const [key, metric] of Object.entries(this.metrics)) {
+                        // ensure the item type = metric type, or the metric type is 'either'. Then check if the metric name is in the item name
+                        if ((item.type === metric.fileType || metric.fileType === 'either') && item.name.toLowerCase().includes(metric.name)) {
+                            this.metrics[key].found = true;
+                        }
+                    }
+                    // Recursively check subdirectories after checking each metric
+                    if (item.type === 'dir') {
+                        await this.printRepoStructure(url, item.path);
+                    }
+                }
+            }
+        } catch (error) {
+            console.error("Error fetching repository structure:", error);
+        }
+    
+        // Calculate the total score based on the found metrics
+        const totalFound = Object.values(this.metrics).reduce((sum, metric) => sum + (metric.found ? 1 : 0), 0);
+        const totalMetrics = Object.keys(this.metrics).length
+    
+        return (totalFound) / totalMetrics;
+    }    
 }
 
 class License extends Metrics {
@@ -532,6 +608,32 @@ class NetScore extends Metrics {
     }
 }
 
+async function RampUpTest(): Promise<{ passed: number, failed: number }> {
+    let testsPassed = 0;
+    let testsFailed = 0;
+    let rampUps: RampUp[] = [];
+
+    // Ground truth data
+    const groundTruth = [
+        { url: "https://github.com/nullivex/nodist", expectedRampUp: 0.4 },
+        { url: "https://github.com/cloudinary/cloudinary_npm", expectedRampUp: 0.6 },
+        { url: "https://github.com/lodash/lodash", expectedRampUp: 0.4 },
+    ];
+
+    // Iterate over the ground truth data and run tests
+    for (const test of groundTruth) {
+        let rampUp = new RampUp(test.url);
+        let result = await rampUp.evaluate();
+        ASSERT_EQ(result, test.expectedRampUp, `RampUp Test for ${test.url}`) ? testsPassed++ : testsFailed++;
+        ASSERT_LT(rampUp.responseTime, 0.004, `RampUp Response Time Test for ${test.url}`) ? testsPassed++ : testsFailed++;
+        console.log(`Ramp Up Response time: ${rampUp.responseTime.toFixed(6)}s\n`);
+
+        rampUps.push(rampUp);
+    }
+
+    return { passed: testsPassed, failed: testsFailed };
+}
+
 async function BusFactorTest(): Promise<{ passed: number, failed: number }> {
     let testsPassed = 0;
     let testsFailed = 0;
@@ -642,6 +744,7 @@ async function runTests() {
     results.push(BusFactorTest());
     results.push(CorrectnessTest());
     results.push(LicenseTest());
+    results.push(RampUpTest());
 
     // Display test results
     for (let i = 0; i < results.length; i++) {
