@@ -5,6 +5,7 @@ cd "$(dirname "$0")"
 echo "Running from $(pwd)"
 
 
+
 # Function to install and use the latest version of Node.js
 install_latest_node() {
   # Detect the platform (Linux/Mac/Windows)

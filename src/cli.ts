@@ -187,17 +187,78 @@ class Maintainability extends Metrics {
 
 class RampUp extends Metrics {
     // Add a variable to the class
-    public rampUpTime: Promise<number>;
+    public rampUpTime: number = -1;
+
+    // point values
+    private MAX_POINTS = 3;
+    private hasReadme = 0;
+    private hasDocs = 0;
+    private hasExamples = 0;
+
     constructor(
         url: string,
     ) {
         super(url);
-        this.rampUpTime = this.evaluate();
+    }
+
+    private extractOwnerRepo(url: string): { owner: string; repo: string } {
+        const match = url.match(/github\.com\/([^\/]+)\/([^\/]+)/);
+        if (!match) {
+            throw new Error("Invalid GitHub URL");
+        }
+
+        return {
+            owner: match[1],
+            repo: match[2],
+        };
     }
 
     async evaluate(): Promise<number> {
-        // Implement the evaluate method
-        return -1;
+        return await this.printRepoStructure(this.url);
+    }
+
+    async printRepoStructure(url: string, path: string = ''): Promise<number> {
+        try {
+            const { owner, repo } = this.extractOwnerRepo(url);
+
+            const response = await this.octokit.repos.getContent({
+                owner,
+                repo,
+                path,
+            });
+
+            if (Array.isArray(response.data)) {
+                for (const item of response.data) {
+                    if (item.type === 'dir') {
+                        if (item.name.toLocaleLowerCase().includes('example')) {
+                            // print in blue
+                            console.log(`\x1b[33mExample Found: ${item.path}\x1b[0m`); // 📝
+                            this.hasExamples = 1;
+                        }
+                        await this.printRepoStructure(url, item.path);
+                    } else {
+                        // if in root dir and is file which contains README
+                        if (path === '' && item.name.toLowerCase().includes('readme')) {
+                            // print in orange
+                            console.log(`\x1b[33mREADME Found: ${item.path}\x1b[0m`); // 📝
+                            this.hasReadme = 1;
+                        }
+                        // find file/folder containing doc, docs, documentation, etc.
+                        if (item.name.toLowerCase().includes('doc')) {
+                            // print in green
+                            console.log(`\x1b[33mDocumentation Found: ${item.path}\x1b[0m`); // 📝
+                            this.hasDocs = 1;
+                        }
+                    }
+                }
+            } else {
+                console.log(`File: ${response.data.path}`);
+            }
+        } catch (error) {
+            console.error("Error fetching repository structure:", error);
+        }
+
+        return (this.hasReadme + this.hasDocs + this.hasExamples) / this.MAX_POINTS;
     }
 }
 
@@ -246,6 +307,35 @@ class NetScore extends Metrics {
 
 }
 
+async function RampUpTest(): Promise<{ passed: number, failed: number }> {
+    let testsPassed = 0;
+    let testsFailed = 0;
+    let rampUps: RampUp[] = [];
+
+    // Ground truth data
+    const groundTruth = [
+        { url: "https://github.com/nullivex/nodist", expectedRampUp: 0.5 },
+        { url: "https://www.npmjs.com/package/browserify", expectedRampUp: 0.5 },
+        { url: "https://github.com/cloudinary/cloudinary_npm", expectedRampUp: 0.5 },
+        { url: "https://github.com/lodash/lodash", expectedRampUp: 0.5 },
+        { url: "https://www.npmjs.com/package/express", expectedRampUp: 0.5 }
+    ];
+
+    // Iterate over the ground truth data and run tests
+    for (const test of groundTruth) {
+        let rampUp = new RampUp(test.url);
+        let result = await rampUp.evaluate();
+        if (ASSERT_EQ(result, test.expectedRampUp, `Ramp Up Test for ${test.url}`)) {
+            testsPassed++;
+        } else {
+            testsFailed++;
+        }
+        rampUps.push(rampUp);
+    }
+
+    return { passed: testsPassed, failed: testsFailed };
+}
+
 async function BusFactorTest(): Promise<{ passed: number, failed: number }> {
     let testsPassed = 0;
     let testsFailed = 0;
@@ -290,6 +380,7 @@ async function runTests() {
 
     //Run tests
     results.push(BusFactorTest());
+    results.push(RampUpTest());
 
     // Display test results
     for (let i = 0; i < results.length; i++) {
