@@ -37,27 +37,6 @@ async function getRateLimitStatus() {
     return rateLimit.data.rate;
 }
 
-type AsyncFunction<T> = () => Promise<T>; // Define an alias for an asynchronous function
-type TimedResult<T> = { result: T; elapsed: number }; // Define an alias for a timed result
-
-/**
- * Measures the execution time of an asynchronous function.
- *
- * @template T - The type of the result returned by the asynchronous function.
- * @param {string} label - The label to identify the timing measurement.
- * @param {AsyncFunction<T>} asyncFunction - The asynchronous function to execute.
- * @returns {Promise<TimedResult<T>>} - A promise that resolves to the result and elapsed time.
- */
-async function timeAsync<T>(label: string, asyncFunction: AsyncFunction<T>): Promise<TimedResult<T>> {
-    const start = Date.now(); // Start timing
-    const result = await asyncFunction(); // Execute the asynchronous function
-    const end = Date.now(); // End timing
-    const elapsed = end - start; // Calculate the elapsed time
-    console.log(`${label} response time: ${elapsed}ms`); // Output the timing
-
-    return { result, elapsed };
-}
-
 /**
  * Asserts that the actual value is equal to the expected value within a threshold.
  * 
@@ -479,45 +458,33 @@ async function BusFactorTest(): Promise<{ passed: number, failed: number }> {
 }
 
 /**
- * Performs a correctness test on two URLs and returns the number of tests passed, 
- * number of tests failed, and an array of timings.
+ * Performs correctness tests on the given URLs and returns the number of tests passed and failed.
  *
- * @returns A promise that resolves to an object containing the number of tests passed, 
- *          number of tests failed, and an array of timings.
+ * @returns A promise that resolves to an object containing the number of tests passed and failed.
  */
-async function CorrectnessTest(): Promise<{ passed: number; failed: number; timings: number[] }> {
+async function CorrectnessTest(): Promise<{ passed: number, failed: number }> {
     let testsPassed = 0;
     let testsFailed = 0;
-    const timings: number[] = [];
 
-    // Test 1 //
-    const { result: result1, elapsed: elapsed1 } = await timeAsync('Correctness Test 1', async () => {
-        const correctness = new Correctness('https://github.com/cloudinary/cloudinary_npm');
-        return correctness.evaluate();
-    });
-    timings.push(elapsed1);
-    const expectedValue1 = 0.933333333;
-    ASSERT_EQ(result1, expectedValue1, 'Correctness test 1') ? testsPassed++ : testsFailed++;
+    // Test 1
+    const correctness = new Correctness('https://github.com/cloudinary/cloudinary_npm');
+    const result: number = await correctness.evaluate();
+    const expectedValue = 0.933333333; // Expected value is 0.93333...
+    ASSERT_EQ(result, expectedValue, 'Correctness test 1') ? testsPassed++ : testsFailed++;
 
-    // Test 2 //
-    const { result: result2, elapsed: elapsed2 } = await timeAsync('Correctness Test 2', async () => {
-        const correctness2 = new Correctness('https://github.com/nullivex/nodist');
-        return correctness2.evaluate();
-    });
-    timings.push(elapsed2);
-    const expectedValue2 = 0.90909091;
+    // Test 2
+    const correctness2 = new Correctness('https://github.com/nullivex/nodist');
+    const result2: number = await correctness2.evaluate();
+    const expectedValue2 = 0.90909091; // Expected value is 0.90909091
     ASSERT_EQ(result2, expectedValue2, 'Correctness test 2') ? testsPassed++ : testsFailed++;
 
-    // Test 3 //
-    const { result: result3, elapsed: elapsed3 } = await timeAsync('Correctness Test 3', async () => {
-        const correctness3 = new Correctness('https://github.com/Coop8/Coop8');
-        return correctness3.evaluate();
-    });
-    timings.push(elapsed3);
-    const expectedValue3 = 1;
+    // Test 3
+    const correctness3 = new Correctness('https://github.com/Coop8/Coop8');
+    const result3: number = await correctness3.evaluate();
+    const expectedValue3 = 1; // Expected value is 1
     ASSERT_EQ(result3, expectedValue3, 'Correctness test 3') ? testsPassed++ : testsFailed++;
 
-    return { passed: testsPassed, failed: testsFailed, timings };
+    return { passed: testsPassed, failed: testsFailed };
 }
 
 /**
@@ -528,12 +495,11 @@ async function CorrectnessTest(): Promise<{ passed: number; failed: number; timi
 async function runTests() {
     let passedTests = 0;
     let failedTests = 0;
-    let results: Promise<{ passed: number; failed: number; timings: number[] }>[] = [];
-    let allTimings: number[] = [];
-
+    let results: Promise<{ passed: number, failed: number }>[] = [];
     console.log('Running tests...');
     console.log('Checking environment variables...');
 
+    // get token from environment variable
     let status = await getRateLimitStatus();
     console.log(`Rate limit status: ${status.remaining} out of ${status.limit}`);
 
@@ -546,15 +512,11 @@ async function runTests() {
         let result = await results[i];
         passedTests += result.passed;
         failedTests += result.failed;
-        allTimings = allTimings.concat(result.timings); // Collect timings from each test
     }
-    console.log(`\n\x1b[1;32mTests Passed: ${passedTests}\x1b[0m`);
+
+    console.log(`\x1b[1;32mTests Passed: ${passedTests}\x1b[0m`);
     console.log(`\x1b[1;31mTests Failed: ${failedTests}\x1b[0m`);
     console.log('\x1b[1;34mTests complete\x1b[0m');
-
-    // Display timings
-    let total: number = allTimings.reduce((a, b) => a + b, 0);
-    console.log(`\n\x1b[1;33mTotal time taken: ${total}ms\x1b[0m`);
 }
 
 // Placeholder function for processing URLs
