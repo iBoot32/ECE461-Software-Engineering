@@ -267,7 +267,11 @@ class Correctness extends Metrics {
             return -1;
         }
 
+        // Calculate response time of evaluate method
+        const startTime = new Date().getTime();
         this.correctness = await this.calculateCorrectness();
+        const endTime = new Date().getTime();
+        this.responseTime = (endTime - startTime) / 1000
         return this.correctness;
     }
 
@@ -286,7 +290,6 @@ class Correctness extends Metrics {
 
             // Check if total issues count is zero to prevent division by zero
             if (totalOpenIssues === 0) {
-                console.log('No issues reported.');
                 return 1; // Assuming correctness is perfect if there are no issues
             }
 
@@ -471,18 +474,21 @@ async function CorrectnessTest(): Promise<{ passed: number, failed: number }> {
     const result: number = await correctness.evaluate();
     const expectedValue = 0.933333333; // Expected value is 0.93333...
     ASSERT_EQ(result, expectedValue, 'Correctness test 1') ? testsPassed++ : testsFailed++;
+    console.log(`Response time: ${correctness.responseTime} s\n`);
 
     // Test 2
     const correctness2 = new Correctness('https://github.com/nullivex/nodist');
     const result2: number = await correctness2.evaluate();
     const expectedValue2 = 0.90909091; // Expected value is 0.90909091
     ASSERT_EQ(result2, expectedValue2, 'Correctness test 2') ? testsPassed++ : testsFailed++;
+    console.log(`Response time: ${correctness2.responseTime} s\n`);
 
     // Test 3
     const correctness3 = new Correctness('https://github.com/Coop8/Coop8');
     const result3: number = await correctness3.evaluate();
     const expectedValue3 = 1; // Expected value is 1
     ASSERT_EQ(result3, expectedValue3, 'Correctness test 3') ? testsPassed++ : testsFailed++;
+    console.log(`Response time: ${correctness3.responseTime} s\n`);
 
     return { passed: testsPassed, failed: testsFailed };
 }
