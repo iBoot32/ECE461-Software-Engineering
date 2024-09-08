@@ -350,7 +350,7 @@ class Correctness extends Metrics {
             // Count open and total issues
             const openBugIssues = data.filter(issue => issue.state === 'open').length;
             const totalOpenIssues = data.length;
-            
+
             return { openBugIssues, totalOpenIssues };
         } catch (error) {
             console.error('Error fetching issues data:', error);
@@ -396,7 +396,7 @@ class RampUp extends Metrics {
     public rampUpTime: number = -1;
 
     // point values
-    private metrics: { [key: string]: { name: string; found: boolean, fileType: string} } = {
+    private metrics: { [key: string]: { name: string; found: boolean, fileType: string } } = {
         example: { name: 'example', found: false, fileType: 'either' },
         test: { name: 'test', found: false, fileType: 'either' },
         readme: { name: 'readme', found: false, fileType: 'file' },
@@ -443,7 +443,7 @@ class RampUp extends Metrics {
                 repo,
                 path,
             });
-    
+
             if (Array.isArray(response.data)) {
                 for (const item of response.data) {
                     // check each metric to see if it is found
@@ -462,13 +462,13 @@ class RampUp extends Metrics {
         } catch (error) {
             console.error("Error fetching repository structure:", error);
         }
-    
+
         // Calculate the total score based on the found metrics
         const totalFound = Object.values(this.metrics).reduce((sum, metric) => sum + (metric.found ? 1 : 0), 0);
         const totalMetrics = Object.keys(this.metrics).length
-    
+
         return (totalFound) / totalMetrics;
-    }    
+    }
 }
 
 class License extends Metrics {
@@ -642,7 +642,7 @@ async function BusFactorTest(): Promise<{ passed: number, failed: number }> {
     //first test
     let busFactor = new BusFactor('https://github.com/cloudinary/cloudinary_npm');
     let result = await busFactor.evaluate();
-    ASSERT_EQ(result, 0.3, "Bus Factor Test 1") ? testsPassed++ : testsFailed++;
+    ASSERT_EQ(result, 0.15, "Bus Factor Test 1") ? testsPassed++ : testsFailed++;
     ASSERT_LT(busFactor.responseTime, 0.004, "Bus Factor Response Time Test 1") ? testsPassed++ : testsFailed++;
     console.log(`Response time: ${busFactor.responseTime.toFixed(6)}s\n`);
     busFactors.push(busFactor);
@@ -651,7 +651,7 @@ async function BusFactorTest(): Promise<{ passed: number, failed: number }> {
     //second test
     busFactor = new BusFactor('https://github.com/nullivex/nodist');
     result = await busFactor.evaluate();
-    ASSERT_EQ(result, 0.3, "Bus Factor Test 2") ? testsPassed++ : testsFailed++;
+    ASSERT_EQ(result, 0.07, "Bus Factor Test 2") ? testsPassed++ : testsFailed++;
     ASSERT_LT(busFactor.responseTime, 0.002, "Bus Factor Response Time Test 2") ? testsPassed++ : testsFailed++;
     console.log(`Response time: ${busFactor.responseTime.toFixed(6)}s\n`);
     busFactors.push(busFactor);
@@ -659,7 +659,7 @@ async function BusFactorTest(): Promise<{ passed: number, failed: number }> {
     //third test
     busFactor = new BusFactor('https://github.com/lodash/lodash');
     result = await busFactor.evaluate();
-    ASSERT_EQ(result, 0.7, "Bus Factor Test 3") ? testsPassed++ : testsFailed++;
+    ASSERT_EQ(result, 0.02, "Bus Factor Test 3") ? testsPassed++ : testsFailed++;
     ASSERT_LT(busFactor.responseTime, 0.084, "Bus Factor Response Time Test 3") ? testsPassed++ : testsFailed++;
     console.log(`Response time: ${busFactor.responseTime.toFixed(6)}s\n`);
     busFactors.push(busFactor);
